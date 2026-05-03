@@ -19,12 +19,15 @@ Metrics include:
 import os
 import re
 import json
+import warnings
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 from collections import defaultdict
 
 import pandas as pd
 import numpy as np
+
+warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
 
 
 # ============================================================================
@@ -151,15 +154,37 @@ class MetricsCalculator:
             else:
                 self.df[f"time_att_{i}"] = 0
             
-            # Tokens
-            prompt_col = f"{self.agent_name}_attempt_{i}_avg_prompt_tokens"
-            completion_col = f"{self.agent_name}_attempt_{i}_avg_completion_tokens"
-            if prompt_col in self.df.columns:
-                self.df[f"prompt_tokens_att_{i}"] = pd.to_numeric(self.df[prompt_col], errors="coerce").fillna(0)
+            # Tokens - prefer total columns, fall back to avg * steps
+            total_prompt_col = f"{self.agent_name}_attempt_{i}_total_prompt_tokens"
+            total_completion_col = f"{self.agent_name}_attempt_{i}_total_completion_tokens"
+            avg_prompt_col = f"{self.agent_name}_attempt_{i}_avg_prompt_tokens"
+            avg_completion_col = f"{self.agent_name}_attempt_{i}_avg_completion_tokens"
+            steps_col_name = f"{self.agent_name}_attempt_{i}_total_steps"
+
+            if total_prompt_col in self.df.columns:
+                self.df[f"total_prompt_tokens_att_{i}"] = pd.to_numeric(self.df[total_prompt_col], errors="coerce").fillna(0)
+            elif avg_prompt_col in self.df.columns and steps_col_name in self.df.columns:
+                avg_vals = pd.to_numeric(self.df[avg_prompt_col], errors="coerce").fillna(0)
+                steps_vals = pd.to_numeric(self.df[steps_col_name], errors="coerce").fillna(0)
+                self.df[f"total_prompt_tokens_att_{i}"] = avg_vals * steps_vals
+            else:
+                self.df[f"total_prompt_tokens_att_{i}"] = 0
+
+            if total_completion_col in self.df.columns:
+                self.df[f"total_completion_tokens_att_{i}"] = pd.to_numeric(self.df[total_completion_col], errors="coerce").fillna(0)
+            elif avg_completion_col in self.df.columns and steps_col_name in self.df.columns:
+                avg_vals = pd.to_numeric(self.df[avg_completion_col], errors="coerce").fillna(0)
+                steps_vals = pd.to_numeric(self.df[steps_col_name], errors="coerce").fillna(0)
+                self.df[f"total_completion_tokens_att_{i}"] = avg_vals * steps_vals
+            else:
+                self.df[f"total_completion_tokens_att_{i}"] = 0
+
+            if avg_prompt_col in self.df.columns:
+                self.df[f"prompt_tokens_att_{i}"] = pd.to_numeric(self.df[avg_prompt_col], errors="coerce").fillna(0)
             else:
                 self.df[f"prompt_tokens_att_{i}"] = 0
-            if completion_col in self.df.columns:
-                self.df[f"completion_tokens_att_{i}"] = pd.to_numeric(self.df[completion_col], errors="coerce").fillna(0)
+            if avg_completion_col in self.df.columns:
+                self.df[f"completion_tokens_att_{i}"] = pd.to_numeric(self.df[avg_completion_col], errors="coerce").fillna(0)
             else:
                 self.df[f"completion_tokens_att_{i}"] = 0
             
@@ -275,38 +300,56 @@ class MetricsCalculator:
         """Calculate Pass@K rates for overall, memory, and standard tasks."""
         total = len(self.df)
         
-        # Calculate pass@k columns
+        # First, create pass_at columns on the full DataFrame
         self.df["pass_at_1"] = self.df["success_att_1"]
-        self.df["pass_at_2"] = self.df[["success_att_1", "success_att_2"]].max(axis=1)
-        self.df["pass_at_3"] = self.df[[f"success_att_{i}" for i in range(1, self.max_attempts + 1)]].max(axis=1)
         
-        # Now filter after adding pass_at columns
+        if self.max_attempts >= 2 and "success_att_2" in self.df.columns:
+            self.df["pass_at_2"] = self.df[["success_att_1", "success_att_2"]].max(axis=1)
+        
+        if self.max_attempts >= 3:
+            success_cols = [f"success_att_{i}" for i in range(1, self.max_attempts + 1) if f"success_att_{i}" in self.df.columns]
+            if success_cols:
+                self.df[f"pass_at_{self.max_attempts}"] = self.df[success_cols].max(axis=1)
+        
+        # Now create filtered DataFrames after columns exist
+        executed_df = self.df[self.df["steps_att_1"] > 0]
         memory_df = self.df[self.df["requires_ui_memory"]]
         standard_df = self.df[~self.df["requires_ui_memory"]]
+        executed_memory_df = executed_df[executed_df["requires_ui_memory"]]
+        executed_standard_df = executed_df[~executed_df["requires_ui_memory"]]
         
         results = {}
         
         for k in range(1, self.max_attempts + 1):
             pass_col = f"pass_at_{k}"
             
-            # Overall
-            count_all = self.df[pass_col].sum()
-            results[f"pass_at_{k}_count"] = int(count_all)
-            results[f"pass_at_{k}_rate"] = count_all / total * 100 if total > 0 else 0
+            if pass_col not in self.df.columns:
+                continue
             
-            # Memory
-            count_mem = memory_df[pass_col].sum() if not memory_df.empty else 0
+            # Overall - use executed tasks as denominator
+            count_all = executed_df[pass_col].sum() if not executed_df.empty else 0
+            executed_count = len(executed_df)
+            results[f"pass_at_{k}_count"] = int(count_all)
+            results[f"pass_at_{k}_rate"] = count_all / executed_count * 100 if executed_count > 0 else 0
+            results[f"pass_at_{k}_total"] = executed_count
+            
+            # Memory - use executed memory tasks as denominator
+            count_mem = executed_memory_df[pass_col].sum() if not executed_memory_df.empty else 0
+            executed_mem_count = len(executed_memory_df)
             results[f"pass_at_{k}_memory_count"] = int(count_mem)
             results[f"pass_at_{k}_memory_rate"] = (
-                count_mem / len(memory_df) * 100 if len(memory_df) > 0 else 0
+                count_mem / executed_mem_count * 100 if executed_mem_count > 0 else 0
             )
+            results[f"pass_at_{k}_memory_total"] = executed_mem_count
             
-            # Standard
-            count_std = standard_df[pass_col].sum() if not standard_df.empty else 0
+            # Standard - use executed standard tasks as denominator
+            count_std = executed_standard_df[pass_col].sum() if not executed_standard_df.empty else 0
+            executed_std_count = len(executed_standard_df)
             results[f"pass_at_{k}_standard_count"] = int(count_std)
             results[f"pass_at_{k}_standard_rate"] = (
-                count_std / len(standard_df) * 100 if len(standard_df) > 0 else 0
+                count_std / executed_std_count * 100 if executed_std_count > 0 else 0
             )
+            results[f"pass_at_{k}_standard_total"] = executed_std_count
             
         return results
         
@@ -522,16 +565,15 @@ class MetricsCalculator:
     def _calculate_token_stats(self) -> Dict[str, Any]:
         """Calculate token usage statistics."""
         results = {}
-        total_tasks = len(self.df)
         
         for att in range(1, self.max_attempts + 1):
-            prompt_col = f"prompt_tokens_att_{att}"
-            completion_col = f"completion_tokens_att_{att}"
+            total_prompt_col = f"total_prompt_tokens_att_{att}"
+            total_completion_col = f"total_completion_tokens_att_{att}"
             steps_col = f"steps_att_{att}"
             
-            if prompt_col in self.df.columns and steps_col in self.df.columns:
-                total_prompt = (self.df[prompt_col] * self.df[steps_col]).sum()
-                total_completion = (self.df[completion_col] * self.df[steps_col]).sum()
+            if total_prompt_col in self.df.columns and steps_col in self.df.columns:
+                total_prompt = self.df[total_prompt_col].sum()
+                total_completion = self.df[total_completion_col].sum()
                 total_steps = self.df[steps_col].sum()
                 
                 results[f"token_att{att}_total_prompt"] = int(total_prompt)
@@ -634,31 +676,29 @@ class MetricsPrinter:
     @staticmethod
     def _print_pass_at_k(metrics: Dict[str, Any]):
         """Print Pass@K section."""
-        total = metrics.get("total_tasks", 0)
-        memory = metrics.get("memory_tasks", 0)
-        standard = metrics.get("standard_tasks", 0)
-        
         print(f"\n[>] Pass@K Results:")
         
         # Overall
         pass_str = " | ".join([
-            f"@{k}: {metrics.get(f'pass_at_{k}_count', 0)}/{total} ({metrics.get(f'pass_at_{k}_rate', 0):.1f}%)"
+            f"@{k}: {metrics.get(f'pass_at_{k}_count', 0)}/{metrics.get(f'pass_at_{k}_total', 0)} ({metrics.get(f'pass_at_{k}_rate', 0):.1f}%)"
             for k in range(1, 4)
         ])
         print(f"    Overall:  {pass_str}")
         
         # Memory
-        if memory > 0:
+        mem_total = metrics.get("pass_at_1_memory_total", 0)
+        if mem_total > 0:
             mem_str = " | ".join([
-                f"@{k}: {metrics.get(f'pass_at_{k}_memory_count', 0)}/{memory} ({metrics.get(f'pass_at_{k}_memory_rate', 0):.1f}%)"
+                f"@{k}: {metrics.get(f'pass_at_{k}_memory_count', 0)}/{metrics.get(f'pass_at_{k}_memory_total', 0)} ({metrics.get(f'pass_at_{k}_memory_rate', 0):.1f}%)"
                 for k in range(1, 4)
             ])
             print(f"    Memory:   {mem_str}")
             
         # Standard
-        if standard > 0:
+        std_total = metrics.get("pass_at_1_standard_total", 0)
+        if std_total > 0:
             std_str = " | ".join([
-                f"@{k}: {metrics.get(f'pass_at_{k}_standard_count', 0)}/{standard} ({metrics.get(f'pass_at_{k}_standard_rate', 0):.1f}%)"
+                f"@{k}: {metrics.get(f'pass_at_{k}_standard_count', 0)}/{metrics.get(f'pass_at_{k}_standard_total', 0)} ({metrics.get(f'pass_at_{k}_standard_rate', 0):.1f}%)"
                 for k in range(1, 4)
             ])
             print(f"    Standard: {std_str}")

@@ -4,7 +4,8 @@
 set -e
 
 # shellcheck disable=SC1091
-source activate base
+source /home/nlpir/miniconda3/etc/profile.d/conda.sh
+conda activate base
 
 conda create -n MemGUI python=3.11.0 -y
 echo "Created conda environment MemGUI with Python 3.11.0."

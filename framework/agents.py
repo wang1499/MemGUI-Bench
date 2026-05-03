@@ -100,16 +100,15 @@ class BaseAgent:
         task_language = getattr(task, "task_language", None)
         self.setup_keyboard(device["serial"], task_language)
 
-        is_linux = os.name == "posix"
-        if is_linux:
-            env = f"""export PATH="{self.config["CONDA_PATH"]}/bin:$PATH" && source activate && conda deactivate && conda activate {self.agent_config["ENV_NAME"]}"""
-        else:
-            env = f"""conda activate {self.agent_config["ENV_NAME"]}"""
-
         script, args = self.construct_command(
             task, task.task_description, output_dir, device
         )
-        command = f"{env} && python {script} {args}"
+
+        is_linux = os.name == "posix"
+        if is_linux:
+            command = f"conda run -n {self.agent_config['ENV_NAME']} python {script} {args}"
+        else:
+            command = f"conda run -n {self.agent_config['ENV_NAME']} python {script} {args}"
 
         print(command)
         if is_linux:
@@ -414,7 +413,7 @@ class AndroidWorldAgent(BaseAgent):
             args += f"""--m3a_api_key "{self.config["M3A_API_KEY"]}" """
 
         # Add Qwen3VL specific configuration parameters - all required
-        if self.agent_name == "Qwen3VL":
+        if self.agent_name in ["Qwen3VL", "Qwen3VL_V1", "Qwen3VL_V2"]:
             if "QWEN_BASE_URL" not in self.config:
                 raise ValueError(
                     f"QWEN_BASE_URL must be specified in config for {self.agent_name} agent"
@@ -468,6 +467,14 @@ class UITARS_1_5(AndroidWorldAgent):
 
 class Qwen3VL(AndroidWorldAgent):
     agent_name = "Qwen3VL"
+
+
+class Qwen3VL_V1(Qwen3VL):
+    agent_name = "Qwen3VL_V1"
+
+
+class Qwen3VL_V2(Qwen3VL):
+    agent_name = "Qwen3VL_V2"
 
 
 class AgentAsAModel(BaseAgent):

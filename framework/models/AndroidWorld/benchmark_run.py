@@ -8,6 +8,7 @@ from android_world.agents import (
     ui_tars_1_5,
     m3a_multiturn,
     qwen3_vl,
+    qwen3_vl_v1,
 )
 from android_world.env import env_launcher
 from PIL import Image
@@ -47,6 +48,8 @@ parser.add_argument(
         "UITARS",
         "UITARS_1_5",
         "Qwen3VL",
+        "Qwen3VL_V1",
+        "Qwen3VL_V2",
     ],
     default="M3A_MultiTurn",
 )
@@ -129,7 +132,7 @@ def setup_agent(env):
         if not args.m3a_api_key:
             raise ValueError(f"--m3a_api_key is required for {args.agent} agent")
 
-    if args.agent == "Qwen3VL":
+    if args.agent in ["Qwen3VL", "Qwen3VL_V1", "Qwen3VL_V2"]:
         if not args.qwen_base_url:
             raise ValueError(f"--qwen_base_url is required for {args.agent} agent")
         if not args.qwen_api_key:
@@ -236,6 +239,45 @@ def setup_agent(env):
         screenshot_key = "before_screenshot"
         grounded_action_key = "parsed_action"
         log_keys = ["action_output", "raw_response"]
+        raw_response_key = ["raw_response"]
+    elif args.agent == "Qwen3VL_V1":
+        qwen_config = {
+            "QWEN_BASE_URL": args.qwen_base_url,
+            "QWEN_API_KEY": args.qwen_api_key,
+            "QWEN_MODEL": args.qwen_model,
+        }
+        agent = qwen3_vl_v1.Qwen3VLV1(env, config=qwen_config)
+        screenshot_key = "before_screenshot"
+        grounded_action_key = "parsed_action"
+        log_keys = [
+            "action_output",
+            "raw_response",
+            "parsed_tool_calls",
+            "tool_results",
+            "todo_state",
+            "memory_state",
+        ]
+        raw_response_key = ["raw_response"]
+    elif args.agent == "Qwen3VL_V2":
+        from android_world.agents import qwen3_vl_v2
+
+        qwen_config = {
+            "QWEN_BASE_URL": args.qwen_base_url,
+            "QWEN_API_KEY": args.qwen_api_key,
+            "QWEN_MODEL": args.qwen_model,
+        }
+        agent = qwen3_vl_v2.Qwen3VLV2(env, config=qwen_config)
+        screenshot_key = "before_screenshot"
+        grounded_action_key = "parsed_action"
+        log_keys = [
+            "action_output",
+            "raw_response",
+            "parsed_tool_calls",
+            "tool_results",
+            "todo_state",
+            "memory_state",
+            "parallel_logs",
+        ]
         raw_response_key = ["raw_response"]
     return agent, screenshot_key, grounded_action_key, log_keys, raw_response_key
 
@@ -436,6 +478,8 @@ def main():
         error_code = 0
         total_prompt_tokens = 0
         total_completion_tokens = 0
+        prev_cumulative_prompt_tokens = 0
+        prev_cumulative_completion_tokens = 0
         end_time_initial = time.time()
         elapsed_time_initial = end_time_initial - start_time_initial
         start_time_exec = time.time()
@@ -479,28 +523,33 @@ def main():
                     )
                     enhanced_log_data = {}
                 elif args.agent in ["UITARS", "UITARS_1_5"]:
-                    # 获取增强日志数据，包括详细的模型调用记录
                     if hasattr(agent, "get_enhanced_log_data"):
                         enhanced_log_data = agent.get_enhanced_log_data()
-                        prompt_tokens = enhanced_log_data.get("total_prompt_tokens", 0)
-                        completion_tokens = enhanced_log_data.get(
+                        cumulative_prompt = enhanced_log_data.get("total_prompt_tokens", 0)
+                        cumulative_completion = enhanced_log_data.get(
                             "total_completion_tokens", 0
                         )
+                        prompt_tokens = cumulative_prompt - prev_cumulative_prompt_tokens
+                        completion_tokens = cumulative_completion - prev_cumulative_completion_tokens
+                        prev_cumulative_prompt_tokens = cumulative_prompt
+                        prev_cumulative_completion_tokens = cumulative_completion
                     else:
-                        # 兼容旧版本
                         enhanced_log_data = {}
                         prompt_tokens = 0
                         completion_tokens = 0
-                elif args.agent == "Qwen3VL":
+                elif args.agent in ["Qwen3VL", "Qwen3VL_V1", "Qwen3VL_V2"]:
                     # 获取增强日志数据，包括详细的模型调用记录
                     if hasattr(agent, "get_enhanced_log_data"):
                         enhanced_log_data = agent.get_enhanced_log_data()
-                        prompt_tokens = enhanced_log_data.get("total_prompt_tokens", 0)
-                        completion_tokens = enhanced_log_data.get(
+                        cumulative_prompt = enhanced_log_data.get("total_prompt_tokens", 0)
+                        cumulative_completion = enhanced_log_data.get(
                             "total_completion_tokens", 0
                         )
+                        prompt_tokens = cumulative_prompt - prev_cumulative_prompt_tokens
+                        completion_tokens = cumulative_completion - prev_cumulative_completion_tokens
+                        prev_cumulative_prompt_tokens = cumulative_prompt
+                        prev_cumulative_completion_tokens = cumulative_completion
                     else:
-                        # 兼容旧版本
                         enhanced_log_data = {}
                         prompt_tokens = 0
                         completion_tokens = 0
@@ -580,6 +629,8 @@ def main():
         "UITARS",
         "UITARS_1_5",
         "Qwen3VL",
+        "Qwen3VL_V1",
+        "Qwen3VL_V2",
     ] and hasattr(agent, "get_enhanced_log_data"):
         enhanced_log_data = agent.get_enhanced_log_data()
         if enhanced_log_data.get("detailed_model_logs"):
@@ -616,16 +667,27 @@ def main():
                     / model_stats["total_model_calls"]
                 )
 
-                # 计算API调用时间统计
-                api_durations = [
-                    log.get("api_call_duration", 0)
-                    for log in enhanced_log_data["detailed_model_logs"]
-                ]
+                api_durations = []
+                for log in enhanced_log_data["detailed_model_logs"]:
+                    if "mobile" in log:
+                        if "parallel_duration" in log:
+                            api_durations.append(log.get("parallel_duration", 0))
+                        else:
+                            api_durations.append(log["mobile"].get("api_call_duration", 0))
+                    else:
+                        api_durations.append(log.get("api_call_duration", 0))
                 model_stats["total_api_call_duration"] = sum(api_durations)
                 model_stats["average_api_call_duration"] = (
                     model_stats["total_api_call_duration"]
                     / model_stats["total_model_calls"]
                 )
+
+            if enhanced_log_data.get("tool_call_stats"):
+                model_stats["tool_call_stats"] = enhanced_log_data["tool_call_stats"]
+            if enhanced_log_data.get("final_todo_state"):
+                model_stats["final_todo_state"] = enhanced_log_data["final_todo_state"]
+            if enhanced_log_data.get("final_memory_state"):
+                model_stats["final_memory_state"] = enhanced_log_data["final_memory_state"]
 
             with open(
                 args.output_dir + "/model_call_stats.json", "w", encoding="utf-8"

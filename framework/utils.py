@@ -115,10 +115,12 @@ def parse_adb_devices(res) -> dict:
     return devices
 
 
-def setup_emulator(emulator_exe, source_avd_name, num_of_emulators):
+def setup_emulator(emulator_exe, source_avd_name, num_of_emulators, avd_home=None):
     sdk_path = os.path.dirname(os.path.dirname(emulator_exe))
     adb_path = os.path.join(sdk_path, "platform-tools")
     os.environ["PATH"] = f"{adb_path}{os.pathsep}{os.environ['PATH']}"
+    if avd_home:
+        os.environ["ANDROID_AVD_HOME"] = avd_home
     devices = [
         {
             "serial": f"emulator-{5554 + (idx * 2)}",
@@ -137,21 +139,35 @@ def setup_emulator(emulator_exe, source_avd_name, num_of_emulators):
             "-no-snapshot-save",
             "-no-window",
             "-no-audio",
+            "-no-snapshot",
+            "-gpu", "swiftshader_indirect",
+            "-accel", "on",
             "-port",
             str(device["console_port"]),
             "-grpc",
             str(device["grpc_port"]),
+            "-logcat", "*:S",
+            "-feature", "-Vulkan",
+            "-feature", "-GLDirectMem",
         ]
-        # add “no-window” to the command if need to run in headless mode
-        http_proxy = os.environ.get("HTTP_PROXY")
-        if http_proxy:
-            command.extend(["-http-proxy", http_proxy])
-        subprocess.Popen(
-            command,
-            text=True,
-            stdout=subprocess.DEVNULL,  # to silence emulator output
-            # keep any error output
-        )
+        # add "no-window" to the command if need to run in headless mode
+        # http_proxy = os.environ.get("HTTP_PROXY")
+        # if http_proxy:
+        #     command.extend(["-http-proxy", http_proxy])
+
+        # Log emulator output to file for debugging
+        log_dir = os.path.join(os.getcwd(), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(log_dir, f"emulator_{device['console_port']}.log")
+        print(f"Starting emulator, logging to: {log_file}")
+
+        with open(log_file, 'w') as f:
+            subprocess.Popen(
+                command,
+                text=True,
+                stdout=f,
+                stderr=f,
+            )
     adb_command = "adb devices"
     while True:
         result = execute_adb(adb_command)
@@ -189,6 +205,17 @@ def setup_emulator(emulator_exe, source_avd_name, num_of_emulators):
     print("All emulators are ready. Waiting 30 seconds for full stabilization...")
     time.sleep(30)
     print("Stabilization complete. Proceeding with task execution.")
+
+    # Set HTTP proxy via ADB for each device (more reliable than -http-proxy parameter)
+    http_proxy = os.environ.get("MY_HTTP_PROXY")
+    if http_proxy:
+        # Remove http:// or https:// prefix if present
+        proxy_host_port = http_proxy.replace("http://", "").replace("https://", "")
+        for serial in ready_devices:
+            print(f"Setting HTTP proxy for {serial}: {proxy_host_port}")
+            execute_adb(f"adb -s {serial} shell settings put global http_proxy {proxy_host_port}")
+            verify = execute_adb(f"adb -s {serial} shell settings get global http_proxy")
+            print(f"  Verified: {verify.strip()}")
 
     return devices
 
@@ -265,20 +292,25 @@ def restart_emulator(device_info, emulator_exe, source_avd_name):
         command = [
             emulator_exe,
             "-avd",
-            f"{source_avd_name}_{device_idx}",
-            "-no-snapshot-save",
+            f"{source_avd_name}",
             "-no-window",
             "-no-audio",
+            "-no-snapshot",
+            "-gpu", "swiftshader_indirect",
+            "-accel", "on",
             "-port",
             str(console_port),
             "-grpc",
             str(grpc_port),
+            "-logcat", "*:S",
+            "-feature", "-Vulkan",
+            "-feature", "-GLDirectMem",
         ]
 
         # 添加HTTP代理设置（如果有）
-        http_proxy = os.environ.get("HTTP_PROXY")
-        if http_proxy:
-            command.extend(["-http-proxy", http_proxy])
+        # http_proxy = os.environ.get("HTTP_PROXY")
+        # if http_proxy:
+        #     command.extend(["-http-proxy", http_proxy])
 
         # 启动emulator
         subprocess.Popen(
@@ -311,6 +343,16 @@ def restart_emulator(device_info, emulator_exe, source_avd_name):
                         )
                         time.sleep(30)
                         print(f"Emulator {device_serial} stabilization complete.")
+
+                        # Set HTTP proxy via ADB (more reliable than -http-proxy parameter)
+                        http_proxy = os.environ.get("MY_HTTP_PROXY")
+                        if http_proxy:
+                            proxy_host_port = http_proxy.replace("http://", "").replace("https://", "")
+                            print(f"Setting HTTP proxy for {device_serial}: {proxy_host_port}")
+                            execute_adb(f"adb -s {device_serial} shell settings put global http_proxy {proxy_host_port}")
+                            verify = execute_adb(f"adb -s {device_serial} shell settings get global http_proxy")
+                            print(f"  Verified: {verify.strip()}")
+
                         return True
             time.sleep(3)
 
@@ -749,6 +791,8 @@ def save_result__completed_execution(
             )
 
             # Record token-related metrics
+            df.loc[task_id, f"{prefix}_total_prompt_tokens"] = total_prompt_tokens
+            df.loc[task_id, f"{prefix}_total_completion_tokens"] = total_completion_tokens
             df.loc[task_id, f"{prefix}_avg_prompt_tokens"] = (
                 total_prompt_tokens // total_steps if total_steps > 0 else 0
             )
@@ -766,6 +810,13 @@ def save_result__completed_execution(
 
             # Record total time
             df.loc[task_id, f"{prefix}_total_time"] = elapsed_time_total
+            
+            # Save timing record for inference
+            save_timing_record(
+                output_dir, task_id, agent_name, attempt_num, 
+                reasoning_mode="", action_mode="", 
+                inference_time=elapsed_time_total
+            )
 
             # Calculate step ratio (ratio of actual steps to some expected maximum)
             # This could be based on golden_steps from the dataset if available
@@ -782,6 +833,89 @@ def save_result__completed_execution(
 
     df.reset_index(inplace=True)
     try_save_csv(df, get_results_csv_path(output_dir))
+    return df
+
+
+
+def save_timing_record(
+    output_dir: str,
+    task_id: str,
+    agent_name: str,
+    attempt_num: int,
+    reasoning_mode: str,
+    action_mode: str,
+    inference_time: float = None,
+    eval_time: float = None,
+    result: int = None,
+    device_id: str = None,
+) -> pd.DataFrame:
+    """Save timing record to a separate CSV file.
+
+    Args:
+        output_dir: Output directory
+        task_id: Task identifier
+        agent_name: Agent name
+        attempt_num: Attempt number
+        reasoning_mode: Reasoning mode
+        action_mode: Action mode
+        inference_time: Inference time in seconds (optional)
+        eval_time: Evaluation time in seconds (optional)
+        result: Task result (1 for success, 0 for fail, None for not evaluated)
+        device_id: Device serial number (optional)
+    """
+    timing_csv_path = os.path.join(output_dir, "timing_records.csv")
+
+    if os.path.exists(timing_csv_path):
+        df = pd.read_csv(timing_csv_path)
+        if "result" in df.columns and df["result"].dtype == "float64":
+            df["result"] = df["result"].astype(object)
+    else:
+        df = pd.DataFrame(columns=[
+            "task_id", "agent_name", "attempt_num", "reasoning_mode", "action_mode",
+            "inference_time", "eval_time", "result", "device_id"
+        ])
+        df["result"] = df["result"].astype(object)
+
+    existing_idx = df[
+        (df["task_id"] == task_id) &
+        (df["agent_name"] == agent_name) &
+        (df["attempt_num"] == attempt_num) &
+        (df["reasoning_mode"] == reasoning_mode) &
+        (df["action_mode"] == action_mode)
+    ].index
+
+    # Convert result to word
+    result_word = None
+    if result == 1:
+        result_word = "success"
+    elif result == 0:
+        result_word = "fail"
+
+    if len(existing_idx) > 0:
+        idx = existing_idx[0]
+        if inference_time is not None:
+            df.loc[idx, "inference_time"] = inference_time
+        if eval_time is not None:
+            df.loc[idx, "eval_time"] = eval_time
+        if result is not None:
+            df.loc[idx, "result"] = result_word
+        if device_id is not None:
+            df.loc[idx, "device_id"] = device_id
+    else:
+        new_row = {
+            "task_id": task_id,
+            "agent_name": agent_name,
+            "attempt_num": attempt_num,
+            "reasoning_mode": reasoning_mode,
+            "action_mode": action_mode,
+            "inference_time": inference_time if inference_time is not None else 0.0,
+            "eval_time": eval_time if eval_time is not None else 0.0,
+            "result": result_word if result_word is not None else None,
+            "device_id": device_id if device_id is not None else None,
+        }
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+
+    try_save_csv(df, timing_csv_path)
     return df
 
 
@@ -837,11 +971,21 @@ def save_result__completed_evaluation(
     )
 
     result_map = {1: "S", 0: "F", -1: "E"}
-    evaluation_result = result_map.get(success, "E")  # Default to Error
+    evaluation_result = result_map.get(success, "E")
 
-    df.loc[task_id, f"{prefix}_evaluation"] = evaluation_result
-    df.loc[task_id, f"{prefix}_details"] = str(evaluation_detail)
-    df.loc[task_id, f"{prefix}_evaluation_method"] = evaluation_method
+    eval_col = f"{prefix}_evaluation"
+    details_col = f"{prefix}_details"
+    method_col = f"{prefix}_evaluation_method"
+
+    for col in [eval_col, details_col, method_col]:
+        if col not in df.columns:
+            df[col] = ""
+        elif df[col].dtype != object:
+            df[col] = df[col].astype(str)
+
+    df.loc[task_id, eval_col] = evaluation_result
+    df.loc[task_id, details_col] = str(evaluation_detail)
+    df.loc[task_id, method_col] = evaluation_method
 
     # 移除总计token使用情况的存储，只保留分类的token统计
     # df.loc[task_id, f"{prefix}_eval_prompt_tokens"] = eval_prompt_tokens
@@ -851,7 +995,19 @@ def save_result__completed_evaluation(
     # df.loc[task_id, f"{prefix}_model_provider"] = model_provider
     # df.loc[task_id, f"{prefix}_model_name"] = model_name
 
-    # 步骤描述生成的token使用情况
+    string_cols = [
+        f"{prefix}_step_desc_model_name",
+        f"{prefix}_step_desc_model_provider",
+        f"{prefix}_final_decision_model_name",
+        f"{prefix}_final_decision_model_provider",
+        f"{prefix}_failure_step",
+    ]
+    for col in string_cols:
+        if col not in df.columns:
+            df[col] = ""
+        elif df[col].dtype != object:
+            df[col] = df[col].astype(str)
+
     df.loc[task_id, f"{prefix}_step_desc_prompt_tokens"] = step_desc_prompt_tokens
     df.loc[task_id, f"{prefix}_step_desc_completion_tokens"] = (
         step_desc_completion_tokens
@@ -861,7 +1017,6 @@ def save_result__completed_evaluation(
     df.loc[task_id, f"{prefix}_step_desc_model_name"] = step_desc_model_name
     df.loc[task_id, f"{prefix}_step_desc_model_provider"] = step_desc_model_provider
 
-    # 最终决策的token使用情况
     df.loc[task_id, f"{prefix}_final_decision_prompt_tokens"] = (
         final_decision_prompt_tokens
     )
@@ -877,9 +1032,8 @@ def save_result__completed_evaluation(
         final_decision_model_provider
     )
 
-    # 失败步骤追踪
     df.loc[task_id, f"{prefix}_failure_step"] = (
-        failure_step if failure_step is not None else ""
+        str(failure_step) if failure_step is not None else ""
     )
 
     df.reset_index(inplace=True)
@@ -1382,10 +1536,14 @@ def execute_evaluation(
 
     config = get_config(verbose=False)
     conda_path = config["CONDA_PATH"]
+    eval_timeout = config.get("MEMGUI_EVAL_TIMEOUT", 600)
 
-    # 构建包含conda路径的命令
+    memgui_env_path = os.path.join(conda_path, "envs", "MemGUI")
+    if not os.path.exists(memgui_env_path):
+        memgui_env_path = "/data/conda_env/MemGUI"
+    
     command = (
-        f'export PATH="{conda_path}/bin:$PATH" && conda run -n MemGUI python {os.path.join(os.getcwd(), "memgui_eval/evaluator.py")} '
+        f'{memgui_env_path}/bin/python {os.path.join(os.getcwd(), "memgui_eval/evaluator.py")} '
         f"--task_identifier {task_identifier} "
         f"--result_dir {output_dir} "
         f"--mode {mode} "
@@ -1397,7 +1555,21 @@ def execute_evaluation(
 
     print(f"Evaluating task: {task_identifier}, attempt: {attempt}...")
 
-    eval_process = subprocess.run(command, shell=True, capture_output=True, text=True)
+    import time
+    eval_start_time = time.time()
+
+    try:
+        eval_process = subprocess.run(
+            command, shell=True, capture_output=True, text=True, timeout=eval_timeout
+        )
+    except subprocess.TimeoutExpired:
+        eval_elapsed_time = time.time() - eval_start_time
+        save_timing_record(output_dir, task_identifier, agent_name, attempt, reasoning_mode, action_mode, eval_time=eval_elapsed_time)
+        print(f"Evaluation script for attempt {attempt} timed out after {eval_timeout} seconds.")
+        return False
+
+    eval_elapsed_time = time.time() - eval_start_time
+    save_timing_record(output_dir, task_identifier, agent_name, attempt, reasoning_mode, action_mode, eval_time=eval_elapsed_time)
 
     if eval_process.returncode != 0:
         print(
@@ -1417,6 +1589,7 @@ def immediate_evaluate_and_update_pass_at_k(
     reasoning_mode,
     action_mode,
     result_overwrite=False,
+    device_id=None,
 ):
     """
     立即评估任务并更新pass@k状态
@@ -1429,6 +1602,7 @@ def immediate_evaluate_and_update_pass_at_k(
         reasoning_mode: Reasoning mode
         action_mode: Action mode
         result_overwrite: Whether to overwrite existing results
+        device_id: Device serial number (optional)
     """
     attempt_dir = os.path.join(
         output_dir, task_identifier, agent_name, f"attempt_{attempt}"
@@ -1449,6 +1623,7 @@ def immediate_evaluate_and_update_pass_at_k(
 
     if not eval_success:
         print(f"Evaluation failed for task {task_identifier}, attempt {attempt}")
+        save_timing_record(output_dir, task_identifier, agent_name, attempt, reasoning_mode, action_mode, result=0, device_id=device_id)
         return False
 
     # Record task completion for timing
@@ -1478,6 +1653,7 @@ def immediate_evaluate_and_update_pass_at_k(
         print(
             f"Could not find result for task {task_identifier} attempt {attempt} in CSV."
         )
+        save_timing_record(output_dir, task_identifier, agent_name, attempt, reasoning_mode, action_mode, result=0, device_id=device_id)
         return False
 
     eval_result_val = task_row.iloc[0][result_col_name]
@@ -1485,6 +1661,7 @@ def immediate_evaluate_and_update_pass_at_k(
     if eval_result_val == "S":
         print(f"Task {task_identifier} Attempt {attempt} was successful!")
         update_success_tracking(output_dir, task_identifier, agent_name, attempt)
+        save_timing_record(output_dir, task_identifier, agent_name, attempt, reasoning_mode, action_mode, result=1, device_id=device_id)
         return True
     elif eval_result_val == "E":
         print(
@@ -1497,6 +1674,7 @@ def immediate_evaluate_and_update_pass_at_k(
             f"Task {task_identifier} Attempt {attempt} has unknown evaluation result: {eval_result_val}"
         )
 
+    save_timing_record(output_dir, task_identifier, agent_name, attempt, reasoning_mode, action_mode, result=0, device_id=device_id)
     return False
 
 

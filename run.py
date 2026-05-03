@@ -1,9 +1,11 @@
 import os
 import yaml
 import argparse
+import time
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor
 import shutil
+from datetime import datetime
 
 from framework import utils
 from framework.progress_monitor import initialize_timing
@@ -15,11 +17,69 @@ from config_loader import load_config
 
 load_dotenv(verbose=True, override=True)
 
-# Load configuration with mode presets applied
 config = load_config(verbose=True)
+
+# Set HTTP proxy from config if specified
+http_proxy = config.get("MY_HTTP_PROXY")
+if http_proxy:
+    os.environ["MY_HTTP_PROXY"] = http_proxy
+    os.environ["MY_http_proxy"] = http_proxy
+    # Exclude local addresses from proxy
+    #os.environ["NO_PROXY"] = "localhost,127.0.0.1,0.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+   # os.environ["no_proxy"] = "localhost,127.0.0.1,0.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    print(f"MY_HTTP_PROXY set to: {http_proxy}")
+  #  print(f"NO_PROXY set to: {os.environ['NO_PROXY']}")
+
+def log_global_event(output_dir: str, event: str, message: str = ""):
+    """Log global events to a file."""
+    log_path = os.path.join(output_dir, "global_log.txt")
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_entry = f"[{timestamp}] {event}"
+    if message:
+        log_entry += f" - {message}"
+    log_entry += "\n"
+    
+    os.makedirs(output_dir, exist_ok=True)
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(log_entry)
 
 # 创建评估任务执行器
 eval_executor = ThreadPoolExecutor(max_workers=config.get("MAX_EVAL_SUBPROCESS", 8))
+
+pending_eval_futures = []
+
+def submit_async_evaluation(task_identifier, agent_name, attempt, reasoning_mode, action_mode, result_overwrite=False, device_id=None):
+    """Submit evaluation task to background executor."""
+    future = eval_executor.submit(
+        utils.immediate_evaluate_and_update_pass_at_k,
+        output_dir,
+        task_identifier,
+        agent_name,
+        attempt,
+        reasoning_mode,
+        action_mode,
+        result_overwrite,
+        device_id,
+    )
+    pending_eval_futures.append(future)
+    print(f"[Async Eval] Submitted evaluation for {task_identifier} attempt {attempt}")
+    return future
+
+def wait_pending_evaluations():
+    """Wait for all pending evaluations to complete."""
+    if not pending_eval_futures:
+        return
+    
+    print(f"\n[Async Eval] Waiting for {len(pending_eval_futures)} pending evaluations...")
+    for i, future in enumerate(pending_eval_futures):
+        try:
+            future.result()
+            print(f"[Async Eval] Completed {i+1}/{len(pending_eval_futures)}")
+        except Exception as e:
+            print(f"[Async Eval] Evaluation failed: {e}")
+    
+    pending_eval_futures.clear()
+    print("[Async Eval] All evaluations completed")
 
 # 命令行参数解析
 parser = argparse.ArgumentParser()
@@ -94,12 +154,14 @@ if args.mode in ("full", "exec"):
             config["EMULATOR_PATH"],
             config["SOURCE_AVD_NAME"],
             config["NUM_OF_EMULATOR"],
+            config["SYS_AVD_HOME"],
         )
     elif args.setup_emulator:
         devices = utils.setup_emulator(
             config["EMULATOR_PATH"],
             config["SOURCE_AVD_NAME"],
             config["NUM_OF_EMULATOR"],
+            config["SYS_AVD_HOME"],
         )
     else:
         devices = utils.setup_devices()
@@ -228,8 +290,8 @@ def group_tasks_by_type(task_scope, num_devices=2):
             app = getattr(task, "task_app", None)
             if app:
                 tasks_by_app[app].append(task)
-        else:
-            tasks_by_app["_no_app_"].append(task)
+            else:
+                tasks_by_app["_no_app_"].append(task)
 
         # 对每个 app 的任务进行分配
         for app, tasks in sorted(tasks_by_app.items()):
@@ -417,15 +479,21 @@ def check_attempt_success(
         return False
 
 
-def run_task_benchmark(agent_name, task, subprocess_list, devices):
+def run_task_benchmark(agent_name, task, subprocess_list, devices, current_attempt=1):
     """
-    执行任务的benchmark逻辑：执行多次attempt直到成功或达到最大次数
+    执行任务的单个attempt。
+    
+    Args:
+        current_attempt: 当前要执行的attempt编号（默认1）
+    
+    Returns:
+        bool: True表示执行了新attempt，False表示跳过或已存在
     """
     print(
-        f"=== Starting benchmark execution for task {task.task_identifier} with {args.max_attempts} attempts ==="
+        f"=== Starting benchmark execution for task {task.task_identifier}, attempt {current_attempt} ==="
     )
 
-    # 首先检查是否已经有成功的attempt（不需要执行所有attempts）
+    # 首先检查是否已经有成功的attempt
     if not result_overwrite:
         for attempt in range(1, args.max_attempts + 1):
             if check_attempt_success(
@@ -439,9 +507,9 @@ def run_task_benchmark(agent_name, task, subprocess_list, devices):
                 print(
                     f"Task {task.task_identifier} already has a successful attempt ({attempt}). Skipping task execution."
                 )
-                return
+                return False
 
-    # 检查任务是否已经完全完成
+    # 检查任务是否已经完全完成（用于中断恢复）
     task_fully_completed = utils.is_task_fully_completed(
         output_dir,
         task.task_identifier,
@@ -468,222 +536,157 @@ def run_task_benchmark(agent_name, task, subprocess_list, devices):
             print(
                 f"Task {task.task_identifier} is already fully completed. Skipping due to --overwrite flag not set."
             )
-            return
+            return False
 
-    agent = utils.get_agent(agent_name=agent_name)(config)
+    # 检查当前attempt的状态
+    attempt_status = utils.get_attempt_status(
+        output_dir,
+        task.task_identifier,
+        agent_name,
+        current_attempt,
+        args.reasoning_mode,
+        args.action_mode,
+    )
 
-    # Rollout逻辑：执行所有attempts，每个attempt使用不同的emulator
-    for attempt in range(1, args.max_attempts + 1):
+    print(f"Attempt {current_attempt} status: {attempt_status}")
+
+    if attempt_status == "executed_and_evaluated":
+        if result_overwrite:
+            print(
+                f"Attempt {current_attempt} already completed but overwriting due to --overwrite flag."
+            )
+        else:
+            print(f"Attempt {current_attempt} is already executed and evaluated. Skipping.")
+            return False
+    elif attempt_status == "emulator_crash":
+        attempt_dir = os.path.join(
+            output_dir, task.task_identifier, agent_name, f"attempt_{current_attempt}"
+        )
         print(
-            f"--- Processing attempt {attempt}/{args.max_attempts} for task {task.task_identifier} ---"
+            f"[Emulator Crash Recovery] Attempt {current_attempt} failed due to emulator crash. "
+            f"Clearing directory and retrying..."
+        )
+        if os.path.exists(attempt_dir):
+            shutil.rmtree(attempt_dir)
+            print(f"Cleared crashed attempt directory: {attempt_dir}")
+    elif attempt_status == "executed_not_evaluated":
+        print(
+            f"Attempt {current_attempt} is executed but not evaluated. Submitting async evaluation."
+        )
+        if args.mode == "full":
+            submit_async_evaluation(
+                task.task_identifier,
+                agent_name,
+                current_attempt,
+                args.reasoning_mode,
+                args.action_mode,
+                result_overwrite,
+                devices[0]["serial"],
+            )
+        return False
+
+    # 确保设备准备就绪
+    device = devices[0]
+    if args.setup_avd:
+        print(
+            f"Ensuring device {device['serial']} is ready for attempt {current_attempt}..."
+        )
+        if not utils.check_and_restart_device_if_needed(
+            device, config["EMULATOR_PATH"], config["SOURCE_AVD_NAME"]
+        ):
+            print(
+                f"Failed to prepare device {device['serial']}, skipping attempt {current_attempt}"
+            )
+            return False
+
+    # 执行任务
+    if args.mode in ("full", "exec"):
+        attempt_dir = os.path.join(
+            output_dir, task.task_identifier, agent_name, f"attempt_{current_attempt}"
         )
 
-        # 选择设备：循环使用可用设备，确保不同attempt使用不同设备
-        device_index = (attempt - 1) % len(devices)
-        device = devices[device_index]
+        if os.path.exists(attempt_dir):
+            print(f"Clearing existing attempt directory: {attempt_dir}")
+            shutil.rmtree(attempt_dir)
 
-        print(f"Using device {device['serial']} for attempt {attempt}")
+        os.makedirs(attempt_dir)
+        print(f"Created clean attempt directory: {attempt_dir}")
 
-        # 检查当前attempt的状态
-        attempt_status = utils.get_attempt_status(
+        agent = utils.get_agent(agent_name=agent_name)(config)
+
+        # 回到桌面，初始化任务环境
+        #print(f"[Device {device['serial']}] Returning to home screen before task execution")
+        utils.execute_adb(f"adb -s {device['serial']} shell input keyevent KEYCODE_HOME")
+        time.sleep(1)
+
+        max_crash_retries = 3
+        for retry in range(max_crash_retries + 1):
+            print(
+                f"[Device {device['serial']}] Executing attempt {current_attempt}, retry {retry + 1}/{max_crash_retries + 1}"
+            )
+
+            task_completed, task_exit_code = agent.execute_task(
+                task, device, attempt_dir
+            )
+
+            if task_exit_code != 2:
+                break
+
+            if retry < max_crash_retries:
+                print(
+                    f"[Device {device['serial']}] Attempt {current_attempt} failed due to execution error (exit code 2), retrying..."
+                )
+                if os.path.exists(attempt_dir):
+                    print(
+                        f"[Device {device['serial']}] Clearing failed attempt directory: {attempt_dir}"
+                    )
+                    shutil.rmtree(attempt_dir)
+                    os.makedirs(attempt_dir)
+
+                if args.setup_avd:
+                    if not utils.check_and_restart_device_if_needed(
+                        device, config["EMULATOR_PATH"], config["SOURCE_AVD_NAME"]
+                    ):
+                        print(
+                            f"[Device {device['serial']}] Device could not be restored. Failing attempt {current_attempt}"
+                        )
+                        break
+            else:
+                print(
+                    f"[Device {device['serial']}] Max crash retries reached for attempt {current_attempt}. Recording failure."
+                )
+
+        print(
+            f"[Device {device['serial']}] Finished execution for task: {task.task_identifier}, attempt: {current_attempt}"
+        )
+        utils.close_app_activity(device["serial"], None)
+
+        utils.save_result__completed_execution(
             output_dir,
             task.task_identifier,
             agent_name,
-            attempt,
-            args.reasoning_mode,
-            args.action_mode,
+            task_completed,
+            task_exit_code,
+            device["serial"],
+            current_attempt,
+        )
+        print_realtime_progress(
+            f"Execution Done: {task.task_identifier} (attempt {current_attempt})"
         )
 
-        print(f"Attempt {attempt} status: {attempt_status}")
-
-        if attempt_status == "executed_and_evaluated":
-            if result_overwrite:
-                print(
-                    f"Attempt {attempt} already completed but overwriting due to --overwrite flag."
-                )
-            else:
-                print(f"Attempt {attempt} is already executed and evaluated. Skipping.")
-                continue
-        elif attempt_status == "emulator_crash":
-            # 检测到emulator中断导致的失败，清空文件夹并重试
-            attempt_dir = os.path.join(
-                output_dir, task.task_identifier, agent_name, f"attempt_{attempt}"
-            )
-            print(
-                f"[Emulator Crash Recovery] Attempt {attempt} failed due to emulator crash. "
-                f"Clearing directory and retrying..."
-            )
-            if os.path.exists(attempt_dir):
-                shutil.rmtree(attempt_dir)
-                print(f"Cleared crashed attempt directory: {attempt_dir}")
-
-            # 重启设备
-            if args.setup_avd:
-                print(f"Restarting device {device['serial']} after emulator crash...")
-                if not utils.check_and_restart_device_if_needed(
-                    device, config["EMULATOR_PATH"], config["SOURCE_AVD_NAME"]
-                ):
-                    print(
-                        f"Failed to restart device {device['serial']} after crash, skipping attempt {attempt}"
-                    )
-                    continue
-            # 继续执行这个attempt（不continue，让它走到下面的执行逻辑）
-        elif attempt_status == "executed_not_evaluated":
-            print(
-                f"Attempt {attempt} is executed but not evaluated. Performing evaluation only."
-            )
-            # 只执行评估
-            if args.mode == "full":
-                print(f"Evaluating task {task.task_identifier}, attempt {attempt}...")
-                utils.immediate_evaluate_and_update_pass_at_k(
-                    output_dir,
-                    task.task_identifier,
-                    agent_name,
-                    attempt,
-                    args.reasoning_mode,
-                    args.action_mode,
-                    result_overwrite,
-                )
-
-                # 检查评估后是否成功，如果成功则提前结束
-                if check_attempt_success(
-                    output_dir,
-                    task.task_identifier,
-                    agent_name,
-                    attempt,
-                    args.reasoning_mode,
-                    args.action_mode,
-                ):
-                    print(
-                        f"*** Task {task.task_identifier} attempt {attempt} succeeded (final_result=1). "
-                        f"Skipping remaining attempts ({attempt + 1}-{args.max_attempts}). ***"
-                    )
-                    break
-            continue
-
-        # 对于需要执行的attempt（包括emulator_crash恢复后的重试），确保设备准备就绪
-        if args.setup_avd:
-            print(
-                f"Ensuring device {device['serial']} is ready for attempt {attempt}..."
-            )
-            if not utils.check_and_restart_device_if_needed(
-                device, config["EMULATOR_PATH"], config["SOURCE_AVD_NAME"]
-            ):
-                print(
-                    f"Failed to prepare device {device['serial']}, skipping attempt {attempt}"
-                )
-                continue
-
-        # 执行任务
-        if args.mode in ("full", "exec"):
-            attempt_dir = os.path.join(
-                output_dir, task.task_identifier, agent_name, f"attempt_{attempt}"
-            )
-
-            # 清空attempt文件夹，防止残余文件影响实验
-            if os.path.exists(attempt_dir):
-                print(f"Clearing existing attempt directory: {attempt_dir}")
-                shutil.rmtree(attempt_dir)
-
-            # 创建新的attempt文件夹
-            os.makedirs(attempt_dir)
-            print(f"Created clean attempt directory: {attempt_dir}")
-
-            # 执行任务，处理重试逻辑
-            max_crash_retries = 3
-
-            for retry in range(max_crash_retries + 1):
-                print(
-                    f"Executing attempt {attempt}, retry {retry + 1}/{max_crash_retries + 1}"
-                )
-
-                task_completed, task_exit_code = agent.execute_task(
-                    task, device, attempt_dir
-                )
-
-                # 如果执行成功或者不是设备崩溃问题，跳出重试循环
-                if task_exit_code != 2:
-                    break
-
-                # 如果是设备崩溃且还有重试机会
-                if retry < max_crash_retries:
-                    print(
-                        f"Attempt {attempt} failed due to execution error (exit code 2), retrying..."
-                    )
-
-                    # 清理失败的attempt目录
-                    if os.path.exists(attempt_dir):
-                        print(f"Clearing failed attempt directory: {attempt_dir}")
-                        shutil.rmtree(attempt_dir)
-                        os.makedirs(attempt_dir)
-
-                    # 重启设备
-                    if args.setup_avd:
-                        if not utils.check_and_restart_device_if_needed(
-                            device, config["EMULATOR_PATH"], config["SOURCE_AVD_NAME"]
-                        ):
-                            print(
-                                f"Device {device['serial']} could not be restored. Failing attempt {attempt}"
-                            )
-                            break
-                else:
-                    print(
-                        f"Max crash retries reached for attempt {attempt}. Recording failure."
-                    )
-
-            print(
-                f"Finished execution for task: {task.task_identifier}, attempt: {attempt}"
-            )
-            utils.close_app_activity(device["serial"], None)
-
-            # 保存执行结果
-            utils.save_result__completed_execution(
-                output_dir,
+        if args.mode == "full":
+            submit_async_evaluation(
                 task.task_identifier,
                 agent_name,
-                task_completed,
-                task_exit_code,
+                current_attempt,
+                args.reasoning_mode,
+                args.action_mode,
+                result_overwrite,
                 device["serial"],
-                attempt,
             )
-            print_realtime_progress(
-                f"Execution Done: {task.task_identifier} (attempt {attempt})"
-            )
-
-            # 立即评估（在full模式下）
-            if args.mode == "full":
-                print(
-                    f"Immediately evaluating task {task.task_identifier}, attempt {attempt}..."
-                )
-                utils.immediate_evaluate_and_update_pass_at_k(
-                    output_dir,
-                    task.task_identifier,
-                    agent_name,
-                    attempt,
-                    args.reasoning_mode,
-                    args.action_mode,
-                    result_overwrite,
-                )
-                print_realtime_progress(
-                    f"Evaluation Done: {task.task_identifier} (attempt {attempt})"
-                )
-
-                # 检查本次attempt是否成功，如果成功则提前结束
-                if check_attempt_success(
-                    output_dir,
-                    task.task_identifier,
-                    agent_name,
-                    attempt,
-                    args.reasoning_mode,
-                    args.action_mode,
-                ):
-                    print(
-                        f"*** Task {task.task_identifier} attempt {attempt} succeeded (final_result=1). "
-                        f"Skipping remaining attempts ({attempt + 1}-{args.max_attempts}). ***"
-                    )
-                    break
 
     print(f"=== Completed benchmark execution for task {task.task_identifier} ===")
+    return True
 
 
 def run_single_attempt(agent_name, task, attempt, device):
@@ -762,35 +765,18 @@ def run_single_attempt(agent_name, task, attempt, device):
         # 继续执行这个attempt（不return，让它走到下面的执行逻辑）
     elif attempt_status == "executed_not_evaluated":
         print(
-            f"[Device {device['serial']}] Attempt {attempt} is executed but not evaluated. Performing evaluation only."
+            f"[Device {device['serial']}] Attempt {attempt} is executed but not evaluated. Submitting async evaluation."
         )
-        # 只执行评估
         if args.mode == "full":
-            print(
-                f"[Device {device['serial']}] Evaluating task {task.task_identifier}, attempt {attempt}..."
-            )
-            utils.immediate_evaluate_and_update_pass_at_k(
-                output_dir,
+            submit_async_evaluation(
                 task.task_identifier,
                 agent_name,
                 attempt,
                 args.reasoning_mode,
                 args.action_mode,
                 result_overwrite,
+                device["serial"],
             )
-
-            # 检查评估后是否成功
-            if check_attempt_success(
-                output_dir,
-                task.task_identifier,
-                agent_name,
-                attempt,
-                args.reasoning_mode,
-                args.action_mode,
-            ):
-                print(
-                    f"[Device {device['serial']}] *** Task {task.task_identifier} attempt {attempt} succeeded (final_result=1). ***"
-                )
         return True
 
     # 对于需要执行的attempt（包括emulator_crash恢复后的重试），确保设备准备就绪
@@ -827,6 +813,11 @@ def run_single_attempt(agent_name, task, attempt, device):
 
         # 创建agent实例
         agent = utils.get_agent(agent_name=agent_name)(config)
+
+        # 回到桌面，初始化任务环境
+        #print(f"[Device {device['serial']}] Returning to home screen before task execution")
+        utils.execute_adb(f"adb -s {device['serial']} shell input keyevent KEYCODE_HOME")
+        time.sleep(1)
 
         # 执行任务，处理重试逻辑
         max_crash_retries = 3
@@ -890,36 +881,17 @@ def run_single_attempt(agent_name, task, attempt, device):
             f"Execution Done: {task.task_identifier} (attempt {attempt})"
         )
 
-        # 立即评估（在full模式下）
+        # 异步评估（在full模式下）
         if args.mode == "full":
-            print(
-                f"[Device {device['serial']}] Immediately evaluating task {task.task_identifier}, attempt {attempt}..."
-            )
-            utils.immediate_evaluate_and_update_pass_at_k(
-                output_dir,
+            submit_async_evaluation(
                 task.task_identifier,
                 agent_name,
                 attempt,
                 args.reasoning_mode,
                 args.action_mode,
                 result_overwrite,
+                device["serial"],
             )
-            print_realtime_progress(
-                f"Evaluation Done: {task.task_identifier} (attempt {attempt})"
-            )
-
-            # 检查本次attempt是否成功
-            if check_attempt_success(
-                output_dir,
-                task.task_identifier,
-                agent_name,
-                attempt,
-                args.reasoning_mode,
-                args.action_mode,
-            ):
-                print(
-                    f"[Device {device['serial']}] *** Task {task.task_identifier} attempt {attempt} succeeded (final_result=1). ***"
-                )
 
     return True
 
@@ -1126,11 +1098,90 @@ def device_worker(
     print(f"[Worker {worker_id}|{device_serial}] Worker started")
 
     completed_groups = 0
+    pending_retry_tasks = []  # 存储需要检查评估结果的任务
 
     while True:
         try:
+            # 优先处理待重试的任务（检查评估结果）
+            if pending_retry_tasks:
+                task = pending_retry_tasks.pop(0)
+                task_identifier = task.task_identifier
+
+                # 找到最后一个已执行的attempt
+                last_attempt = 0
+                for att in range(1, args.max_attempts + 1):
+                    att_status = utils.get_attempt_status(
+                        output_dir,
+                        task_identifier,
+                        agent_name,
+                        att,
+                        args.reasoning_mode,
+                        args.action_mode,
+                    )
+                    if att_status in ["executed_and_evaluated", "executed_not_evaluated"]:
+                        last_attempt = att
+
+                if last_attempt == 0:
+                    # 没有执行过任何attempt，从第一个开始
+                    next_attempt = 1
+                else:
+                    # 检查最后一个attempt的评估是否完成
+                    last_status = utils.get_attempt_status(
+                        output_dir,
+                        task_identifier,
+                        agent_name,
+                        last_attempt,
+                        args.reasoning_mode,
+                        args.action_mode,
+                    )
+
+                    if last_status == "executed_not_evaluated":
+                        # 评估未完成，加回队列等待
+                        pending_retry_tasks.append(task)
+                        continue
+
+                    # 评估已完成，检查是否成功
+                    if check_attempt_success(
+                        output_dir,
+                        task_identifier,
+                        agent_name,
+                        last_attempt,
+                        args.reasoning_mode,
+                        args.action_mode,
+                    ):
+                        print(
+                            f"[Worker {worker_id}|{device_serial}] Task {task_identifier} succeeded at attempt {last_attempt}. Skipping."
+                        )
+                        continue
+
+                    # 失败，找到下一个需要执行的attempt
+                    next_attempt = last_attempt + 1
+
+                if next_attempt > args.max_attempts:
+                    print(
+                        f"[Worker {worker_id}|{device_serial}] Task {task_identifier} all attempts completed. Skipping."
+                    )
+                    continue
+
+                print(
+                    f"[Worker {worker_id}|{device_serial}] >>> Processing task {task_identifier}, attempt {next_attempt} <<<"
+                )
+                single_device_list = [device]
+                run_task_benchmark(
+                    agent_name, task, subprocess_list, single_device_list, next_attempt
+                )
+
+                # 如果还没达到最大尝试次数，加入重试队列等待评估
+                if next_attempt < args.max_attempts:
+                    print(
+                        f"[Worker {worker_id}|{device_serial}] Task {task_identifier} attempt {next_attempt} done, adding to retry queue for evaluation check"
+                    )
+                    pending_retry_tasks.append(task)
+                continue
+            
             # 从队列获取任务组（非阻塞，超时1秒）
-            task_group = task_queue.get(block=True, timeout=1)
+            else:
+                task_group = task_queue.get(block=True, timeout=1)
         except queue.Empty:
             # 队列为空，退出
             print(
@@ -1150,11 +1201,54 @@ def device_worker(
                     f"[Worker {worker_id}|{device_serial}] >>> Processing task {task.task_identifier} <<<"
                 )
 
+                # 检查是否有未完成的评估需要处理（中断恢复）
+                if args.max_attempts > 1:
+                    has_pending_eval = False
+                    for att in range(1, args.max_attempts + 1):
+                        att_status = utils.get_attempt_status(
+                            output_dir,
+                            task.task_identifier,
+                            agent_name,
+                            att,
+                            args.reasoning_mode,
+                            args.action_mode,
+                        )
+                        if att_status == "executed_not_evaluated":
+                            # 提交异步评估并加入重试队列
+                            print(
+                                f"[Worker {worker_id}|{device_serial}] Found pending evaluation for task {task.task_identifier} attempt {att}, submitting eval and adding to retry queue"
+                            )
+                            submit_async_evaluation(
+                                task.task_identifier,
+                                agent_name,
+                                att,
+                                args.reasoning_mode,
+                                args.action_mode,
+                                result_overwrite,
+                                device["serial"],
+                            )
+                            pending_retry_tasks.append(task)
+                            has_pending_eval = True
+                            break
+
+                    if has_pending_eval:
+                        print(
+                            f"[Worker {worker_id}|{device_serial}] <<< Completed task {task.task_identifier} >>>"
+                        )
+                        continue
+
                 # 使用单个设备列表来执行任务，确保所有attempts都在同一设备上
                 single_device_list = [device]
                 run_task_benchmark(
                     agent_name, task, subprocess_list, single_device_list
                 )
+
+                # 执行完后加入重试队列等待评估结果
+                if args.max_attempts > 1:
+                    print(
+                        f"[Worker {worker_id}|{device_serial}] Task {task.task_identifier} attempt 1 done, adding to retry queue for evaluation check"
+                    )
+                    pending_retry_tasks.append(task)
 
                 print(
                     f"[Worker {worker_id}|{device_serial}] <<< Completed task {task.task_identifier} >>>"
@@ -1228,6 +1322,10 @@ def run_eval_only_mode():
 # 主执行逻辑
 # Initialize timing tracking
 initialize_timing(output_dir)
+
+start_time = datetime.now()
+log_global_event(output_dir, "SESSION_START", f"Mode: {args.mode}, Session: {args.session_id}")
+
 print_realtime_progress("Startup")
 
 if args.mode == "eval":
@@ -1261,7 +1359,32 @@ else:
                 print(
                     f"\n>>> Processing task {task.task_identifier} with agent {agent_name} <<<"
                 )
-                run_task_benchmark(agent_name, task, subprocess_list, devices)
+                # 执行所有attempts，每次执行后检查评估结果
+                for attempt in range(1, args.max_attempts + 1):
+                    run_task_benchmark(agent_name, task, subprocess_list, devices, attempt)
+                    
+                    # 检查当前attempt是否成功
+                    if check_attempt_success(
+                        output_dir,
+                        task.task_identifier,
+                        agent_name,
+                        attempt,
+                        args.reasoning_mode,
+                        args.action_mode,
+                    ):
+                        print(
+                            f"Task {task.task_identifier} succeeded at attempt {attempt}. Stopping further attempts."
+                        )
+                        break
+                    
+                    # 如果不是最后一个attempt，等待评估完成
+                    # if attempt < args.max_attempts:
+                    #     print(
+                    #         f"Task {task.task_identifier} attempt {attempt} failed, waiting for evaluation before next attempt..."
+                    #     )
+                    #     # 等待一段时间让评估完成
+                    #     import time
+                    #     time.sleep(5)
 
 # 清理工作
 if args.setup_avd or args.setup_emulator:
@@ -1273,6 +1396,9 @@ if args.mode != "eval":
 # 等待所有子进程完成
 for process in subprocess_list:
     process.wait()
+
+# 等待所有异步评估完成
+wait_pending_evaluations()
 
 # 关闭评估任务执行器
 eval_executor.shutdown(wait=True)
@@ -1311,3 +1437,9 @@ else:
     print("\nWarning: No metrics could be calculated. Check results.csv exists.")
 
 print(f"\nResults CSV: {output_dir}/results.csv")
+
+end_time = datetime.now()
+duration = end_time - start_time
+hours, remainder = divmod(duration.total_seconds(), 3600)
+minutes, seconds = divmod(remainder, 60)
+log_global_event(output_dir, "SESSION_END", f"Duration: {int(hours)}h {int(minutes)}m {int(seconds)}s")

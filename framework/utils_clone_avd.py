@@ -50,7 +50,8 @@ def clone_avd(
     # Copy the .ini file and modify it for the new AVD
     with open(src_ini_file) as src_ini, open(tar_ini_file, "w") as tar_ini:
         for line in src_ini:
-            new_line = line.replace(src_avd_name, tar_avd_name).replace(src_android_avd_home, tar_android_avd_home)
+            # 先替换 AVD home 路径，再替换 AVD 名称，避免父目录名被错误替换
+            new_line = line.replace(src_android_avd_home, tar_android_avd_home).replace(src_avd_name, tar_avd_name)
             if target_linux:
                 new_line = new_line.replace("\\", "/")
             tar_ini.write(new_line)
@@ -64,10 +65,11 @@ def clone_avd(
             with open(ini_path, "w") as file:
                 for line in lines:
                     # Update paths and AVD name/ID
+                    # 先替换 SDK 和 AVD home 路径，再替换 AVD 名称，避免父目录名被错误替换
                     new_line = (
-                        line.replace(src_avd_name, tar_avd_name)
+                        line.replace(src_sdk, tar_sdk)
                         .replace(src_android_avd_home, tar_android_avd_home)
-                        .replace(src_sdk, tar_sdk)
+                        .replace(src_avd_name, tar_avd_name)
                     )
                     if target_linux:
                         new_line = new_line.replace("\\", "/")
@@ -82,10 +84,11 @@ def clone_avd(
             with open(snapshots_hw_ini, "w") as file:
                 for line in lines:
                     # Update AVD name/ID
+                    # 先替换 SDK 和 AVD home 路径，再替换 AVD 名称，避免父目录名被错误替换
                     new_line = (
-                        line.replace(src_avd_name, tar_avd_name)
+                        line.replace(src_sdk, tar_sdk)
                         .replace(src_android_avd_home, tar_android_avd_home)
-                        .replace(src_sdk, tar_sdk)
+                        .replace(src_avd_name, tar_avd_name)
                     )
                     if target_linux:
                         new_line = new_line.replace("\\", "/")
