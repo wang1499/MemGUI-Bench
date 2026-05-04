@@ -84,7 +84,7 @@ def run_pre_evaluation(
 
     try:
         response = inference_chat_gemini_1_image(
-            system_prompt, user_prompt, image1=puzzle_path
+            system_prompt, user_prompt, image1=puzzle_path, max_tokens=4096
         )
 
         # Handle both old (string) and new (dict) response formats

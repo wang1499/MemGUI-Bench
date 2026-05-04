@@ -14,10 +14,10 @@ def get_success_tasks(results_csv_path):
         if "_direct_with_action_attempt_1_evaluation" in c:
             success_col = c
             break
-    
+
     if success_col is None:
         return [], [], "No evaluation column found"
-    
+
     success_tasks = []
     failed_tasks = []
     for _, row in df.iterrows():
@@ -27,8 +27,19 @@ def get_success_tasks(results_csv_path):
             success_tasks.append(task_id)
         else:
             failed_tasks.append(task_id)
-    
+
     return success_tasks, failed_tasks, success_col
+
+
+def get_metrics_summary(session_path):
+    metrics_file = os.path.join(session_path, "metrics_summary.json")
+    if not os.path.exists(metrics_file):
+        return None
+    try:
+        with open(metrics_file) as f:
+            return json.load(f)
+    except Exception:
+        return None
 
 
 def get_task_attempts_results(results_dir, session, task_id):
@@ -137,37 +148,42 @@ def main():
     
     with open(output_path, "w") as f:
         f.write("=" * 80 + "\n")
-        f.write(f"{'Session':<45} {'Success':<10} {'Total':<10} {'Rate'}\n")
+        f.write(f"{'Session':<45} {'Success':<10} {'Memory':<10} {'Total':<10} {'Rate'}\n")
         f.write("=" * 80 + "\n")
-        
+
         all_sessions_data = []
-        
+
         for session in sessions:
-            csv_path = os.path.join(results_dir, session, "results.csv")
+            session_path = os.path.join(results_dir, session)
+            csv_path = os.path.join(session_path, "results.csv")
             if not os.path.exists(csv_path):
                 f.write(f"{session:<45} {'N/A':<10} (no results.csv)\n")
                 continue
-            
+
             success_tasks, failed_tasks, col_used = get_success_tasks(csv_path)
             total = len(success_tasks) + len(failed_tasks)
             success_count = len(success_tasks)
             rate = f"{success_count/total*100:.1f}%" if total > 0 else "N/A"
-            
-            f.write(f"{session:<45} {success_count:<10} {total:<10} {rate}\n")
-            
+
+            metrics = get_metrics_summary(session_path)
+            memory_success = metrics.get("pass_at_1_memory_count", "N/A") if metrics else "N/A"
+
+            f.write(f"{session:<45} {success_count:<10} {memory_success:<10} {total:<10} {rate}\n")
+
             all_sessions_data.append({
                 "session": session,
                 "success_count": success_count,
                 "total": total,
                 "rate": rate,
+                "memory_success": memory_success,
                 "success_tasks": success_tasks,
                 "failed_tasks": failed_tasks,
             })
         
         f.write("=" * 80 + "\n")
-        
+
         for data in all_sessions_data:
-            f.write(f"\n{data['session']} - Success: {data['success_count']}/{data['total']} ({data['rate']})\n")
+            f.write(f"\n{data['session']} - Success: {data['success_count']}/{data['total']} ({data['rate']}), Memory: {data['memory_success']}\n")
             f.write("-" * 60 + "\n")
             if data["success_tasks"]:
                 f.write(f"  Success ({len(data['success_tasks'])}):\n")

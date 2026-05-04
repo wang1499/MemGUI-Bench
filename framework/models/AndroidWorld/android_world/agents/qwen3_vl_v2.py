@@ -17,154 +17,11 @@ from android_world.env import json_action
 
 Colors = qwen3_vl.Colors
 
-SYSTEM_PROMPT_MOBILE = """
-You are a mobile device operation specialist. Your ONLY job is to interact with the mobile UI.
+from android_world.agents import qwen_propmt
 
-# Tool
-
-You can only call ONE tool: `mobile_use`
-
-<tools>
-{
-  "type": "function",
-  "function": {
-    "name": "mobile_use",
-    "description": "Use a touchscreen to interact with a mobile device. The screen resolution is normalized to 1000x1000. Use this tool for clicking, typing, swiping, waiting, answering, pressing system buttons, and terminating.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "action": {"type": "string", "enum": ["click", "long_press", "swipe", "type", "answer", "system_button", "wait", "terminate"]},
-        "coordinate": {"type": "array"},
-        "coordinate2": {"type": "array"},
-        "text": {"type": "string"},
-        "button": {"type": "string", "enum": ["Back", "Home", "Menu", "Enter"]},
-        "status": {"type": "string", "enum": ["success", "failure"]}
-      },
-      "required": ["action"]
-    }
-  }
-}
-</tools>
-
-For each function call, return a JSON object within <tool_call> XML tags:
-<tool_call>
-{"name": <function-name>, "arguments": <args-json-object>}
-</tool_call>
-
-# Response format
-
-1) Thinking: a single short <thinking>...</thinking> block.
-2) Tool call: one <tool_call>...</tool_call> block.
-3) Conclusion: a short <conclusion>...</conclusion> block.
-
-Rules:
-- Output exactly in the order: <thinking>, <tool_call>, <conclusion>.
-- Call mobile_use exactly once per step.
-- If task is completed, use action=terminate with status="success".
-- If task is infeasible, use action=terminate with status="failure".
-- **Search Tip**: When search suggestions appear after typing, click the suggestion directly.
-"""
-
-SYSTEM_PROMPT_TODO = """
-You are a task planning specialist. Your ONLY job is to manage the todo list.
-
-# Tool
-
-You can only call ONE tool: `write_todos`
-
-<tools>
-{
-  "type": "function",
-  "function": {
-    "name": "write_todos",
-    "description": "Create or update a structured todo list for complex tasks. Use this only when todo tracking helps execution.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "merge": {"type": "boolean", "description": "If true, merge todos by id; if false, replace the whole todo list."},
-        "todos": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "id": {"type": "string"},
-              "content": {"type": "string"},
-              "status": {"type": "string", "enum": ["pending", "in_progress", "completed"]},
-              "priority": {"type": "string", "enum": ["high", "medium", "low"]}
-            },
-            "required": ["id", "content", "status", "priority"]
-          }
-        }
-      },
-      "required": ["merge", "todos"]
-    }
-  }
-}
-</tools>
-
-For each function call, return a JSON object within <tool_call> XML tags:
-<tool_call>
-{"name": <function-name>, "arguments": <args-json-object>}
-</tool_call>
-
-# Response format
-
-1) Thinking: a single short <thinking>...</thinking> block.
-2) Tool call: one <tool_call>...</tool_call> block.
-
-Rules:
-- Output exactly in the order: <thinking>, <tool_call>.
-- Call write_todos exactly once per step.
-- Mark todos as completed immediately after finishing each step.
-- Keep exactly one task as in_progress.
-- Use clear, actionable task names.
-"""
-
-SYSTEM_PROMPT_MEMORY = """
-You are a memory management specialist. Your ONLY job is to store and update task memory.
-
-# Tool
-
-You can only call ONE tool: `write_memory`
-
-<tools>
-{
-  "type": "function",
-  "function": {
-    "name": "write_memory",
-    "description": "Store durable task memory such as discovered facts, constraints, partial findings, credentials, locations, or user preferences for reuse in later steps.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "operation": {"type": "string", "enum": ["add", "update", "delete"]},
-        "memory_id": {"type": "string"},
-        "description": {"type": "string"},
-        "content": {"type": "string"}
-      },
-      "required": ["operation", "memory_id"]
-    }
-  }
-}
-</tools>
-
-For each function call, return a JSON object within <tool_call> XML tags:
-<tool_call>
-{"name": <function-name>, "arguments": <args-json-object>}
-</tool_call>
-
-# Response format
-
-1) Thinking: a single short <thinking>...</thinking> block.
-2) Tool call: one <tool_call>...</tool_call> block.
-
-Rules:
-- Output exactly in the order: <thinking>, <tool_call>.
-- Call write_memory exactly once per step.
-- Store important facts, discovered information, user preferences.
-- Use meaningful memory_id for easy retrieval.
-- If no new memory needed, use operation="add" with empty content to indicate no change.
-"""
-
+SYSTEM_PROMPT_MOBILE = qwen_propmt.SYSTEM_PROMPT_MOBILE
+SYSTEM_PROMPT_TODO = qwen_propmt.SYSTEM_PROMPT_TODO
+SYSTEM_PROMPT_MEMORY = qwen_propmt.SYSTEM_PROMPT_MEMORY
 
 class Qwen3VLV2(qwen3_vl.Qwen3VL):
     """Qwen3-VL v2 agent with parallel LLM calls for mobile, todo and memory."""
@@ -181,7 +38,7 @@ class Qwen3VLV2(qwen3_vl.Qwen3VL):
         self.tool_call_stats = {
             "mobile_use": 0,
             "write_todos": 0,
-            "write_memory": 0,
+            "write_memories": 0,
         }
         self.parallel_model_logs: list[dict[str, Any]] = []
 
@@ -192,7 +49,7 @@ class Qwen3VLV2(qwen3_vl.Qwen3VL):
         self.tool_call_stats = {
             "mobile_use": 0,
             "write_todos": 0,
-            "write_memory": 0,
+            "write_memories": 0,
         }
         self.parallel_model_logs = []
 
@@ -210,6 +67,10 @@ class Qwen3VLV2(qwen3_vl.Qwen3VL):
     def _extract_tool_call(self, output: str) -> dict[str, Any] | None:
         match = re.search(r"<tool_call>\s*(.*?)\s*</tool_call>", output, re.DOTALL)
         if not match:
+            if "no_change" in output.lower() or "no_update" in output.lower():
+                return {"name": "no_change", "arguments": {}}
+            if "no_memory_needed" in output.lower() or "no_memory" in output.lower():
+                return {"name": "no_memory", "arguments": {}}
             return None
         try:
             tool_call = json.loads(match.group(1).strip())
@@ -332,7 +193,6 @@ class Qwen3VLV2(qwen3_vl.Qwen3VL):
                     "id": str(todo["id"]),
                     "content": str(todo["content"]),
                     "status": str(todo["status"]),
-                    "priority": str(todo["priority"]),
                 }
             )
 
@@ -351,33 +211,40 @@ class Qwen3VLV2(qwen3_vl.Qwen3VL):
             "todos": copy.deepcopy(self.todo_state),
         }
 
-    def _apply_memory_tool(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        operation = arguments.get("operation")
-        memory_id = str(arguments.get("memory_id"))
-        description = str(arguments.get("description", ""))
-        content = str(arguments.get("content", ""))
+    def _apply_memory_tool(self, arguments: dict[str, Any], step_num: int) -> dict[str, Any]:
+        memories = arguments.get("memories", [])
+        if not isinstance(memories, list):
+            raise ValueError("'memories' must be a list")
 
-        if operation not in {"add", "update", "delete"}:
-            raise ValueError(f"Unsupported memory operation: {operation}")
+        results = []
+        for mem in memories:
+            operation = mem.get("operation")
+            memory_id = str(mem.get("memory_id"))
+            content = str(mem.get("content", ""))
 
-        result = {
-            "tool_name": "write_memory",
-            "operation": operation,
-            "memory_id": memory_id,
-            "description": description,
-            "content": content,
-        }
+            if operation not in {"add", "update", "delete"}:
+                raise ValueError(f"Unsupported memory operation: {operation}")
 
-        if operation == "delete":
-            self.memory_state.pop(memory_id, None)
-        else:
-            self.memory_state[memory_id] = {
+            if operation == "delete":
+                self.memory_state.pop(memory_id, None)
+            elif content:
+                self.memory_state[memory_id] = {
+                    "memory_id": memory_id,
+                    "content": content,
+                    "step": step_num,
+                }
+
+            results.append({
+                "operation": operation,
                 "memory_id": memory_id,
-                "description": description,
                 "content": content,
-            }
+            })
 
-        return result
+        return {
+            "tool_name": "write_memories",
+            "count": len(results),
+            "memories": results,
+        }
 
     def _call_llm(
         self,
@@ -386,7 +253,7 @@ class Qwen3VLV2(qwen3_vl.Qwen3VL):
         user_prompt: str,
         screenshot_base64: str,
         step_num: int,
-    ) -> dict[str, Any]:
+     ) -> dict[str, Any]:
         start_time = time.time()
         log_entry = {
             "agent_type": agent_type,
@@ -499,6 +366,14 @@ class Qwen3VLV2(qwen3_vl.Qwen3VL):
             "Decide the next mobile UI action."
             "<image>"
         )
+        if "answer" in goal:
+            user_prompt_mobile += (
+                "\n\n**Answer Action Guidance**: "
+                "When you have found the answer to the user's query, stop searching and use the `answer` action to return the result. "
+                "Do not continue browsing or navigate to other pages once the answer is obtained. "
+                "The answer should be concise and directly address the user's question.\n"
+            )
+
 
         user_prompt_todo = (
             f"The user query: {goal}\n"
@@ -607,7 +482,9 @@ class Qwen3VLV2(qwen3_vl.Qwen3VL):
         todo_result = results.get("todo", {})
         if todo_result.get("success") and todo_result.get("tool_call"):
             tool_call = todo_result["tool_call"]
-            if tool_call.get("name") == "write_todos":
+            if tool_call.get("name") == "no_change":
+                pass
+            elif tool_call.get("name") == "write_todos":
                 parsed_tool_calls.append({"name": "write_todos", "arguments": tool_call["arguments"]})
                 try:
                     todo_apply_result = self._apply_todo_tool(tool_call["arguments"])
@@ -621,16 +498,18 @@ class Qwen3VLV2(qwen3_vl.Qwen3VL):
         memory_result = results.get("memory", {})
         if memory_result.get("success") and memory_result.get("tool_call"):
             tool_call = memory_result["tool_call"]
-            if tool_call.get("name") == "write_memory":
-                parsed_tool_calls.append({"name": "write_memory", "arguments": tool_call["arguments"]})
+            if tool_call.get("name") == "no_memory":
+                pass
+            elif tool_call.get("name") == "write_memories":
+                parsed_tool_calls.append({"name": "write_memories", "arguments": tool_call["arguments"]})
                 try:
-                    memory_apply_result = self._apply_memory_tool(tool_call["arguments"])
+                    memory_apply_result = self._apply_memory_tool(tool_call["arguments"], step_num + 1)
                     memory_apply_result["status"] = "success"
                     tool_results.append(memory_apply_result)
-                    self.tool_call_stats["write_memory"] += 1
+                    self.tool_call_stats["write_memories"] += 1
                 except Exception as exc:
                     parse_errors.append(f"Memory tool failed: {exc}")
-                    tool_results.append({"tool_name": "write_memory", "status": "error", "error": str(exc)})
+                    tool_results.append({"tool_name": "write_memories", "status": "error", "error": str(exc)})
 
         step_data["parsed_tool_calls"] = parsed_tool_calls
         step_data["tool_results"] = tool_results
@@ -693,7 +572,8 @@ class Qwen3VLV2(qwen3_vl.Qwen3VL):
             action_history_desc.append(conclusion if conclusion else step_data["action_summary"])
             step_data["action_history_desc"] = action_history_desc.copy()
             self.history.append(step_data)
-            return base_agent.AgentInteractionResult(False, step_data)
+            should_end_task = "answer" in goal.lower()
+            return base_agent.AgentInteractionResult(should_end_task, step_data)
 
         try:
             actual_action_coordinates = self.env.execute_action(mobile_action)

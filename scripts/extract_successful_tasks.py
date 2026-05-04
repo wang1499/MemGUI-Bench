@@ -70,8 +70,8 @@ def filter_tasks_csv(input_csv, output_csv, successful_tasks):
 
 if __name__ == "__main__":
     results_dir = sys.argv[1] if len(sys.argv) > 1 else "results"
-    input_csv = sys.argv[2] if len(sys.argv) > 2 else "data/memgui-tasks-easy.csv"
-    output_csv = sys.argv[3] if len(sys.argv) > 3 else "data/memgui-tasks-success.csv"
+    input_csv = sys.argv[2] if len(sys.argv) > 2 else "datav2/memgui-tasks-easy.csv"
+    output_csv = sys.argv[3] if len(sys.argv) > 3 else "datav2/memgui-tasks-successv2.csv"
 
     print(f"Scanning results in: {results_dir}")
     successful_tasks = get_successful_tasks(results_dir)

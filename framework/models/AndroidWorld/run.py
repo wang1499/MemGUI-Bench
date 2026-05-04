@@ -157,7 +157,7 @@ _MINIWOB_ADDITIONAL_GUIDELINES = [
 def _get_agent(
     env: interface.AsyncEnv,
     family: str | None = None,
-) -> base_agent.EnvironmentInteractingAgent:
+ ) -> base_agent.EnvironmentInteractingAgent:
   """Gets agent."""
   print('Initializing agent...')
   agent = None

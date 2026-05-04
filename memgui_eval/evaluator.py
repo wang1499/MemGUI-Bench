@@ -32,6 +32,27 @@ from memgui_eval.utils.common import (
 )
 from memgui_eval.utils.image_utils import stitch_images_horizontally
 
+_REFERENCE_ANSWERS = None
+
+def _load_reference_answers():
+    global _REFERENCE_ANSWERS
+    if _REFERENCE_ANSWERS is not None:
+        return _REFERENCE_ANSWERS
+    answers_path = os.path.join(os.path.dirname(__file__), "task_reference_answers.json")
+    if os.path.exists(answers_path):
+        with open(answers_path, "r", encoding="utf-8") as f:
+            _REFERENCE_ANSWERS = json.load(f)
+    else:
+        _REFERENCE_ANSWERS = {}
+    return _REFERENCE_ANSWERS
+
+def _get_reference_answer(task_identifier):
+    answers = _load_reference_answers()
+    entry = answers.get(task_identifier)
+    if entry and entry.get("answer"):
+        return entry
+    return None
+
 # Import IRR evaluation module
 from memgui_eval.irr.irr_agent import calculate_irr_for_task, get_irr_analysis_prompt
 
@@ -118,6 +139,7 @@ def _generate_description_for_step(
             model=DEFAULT_DESC_MODEL,
             provider=DEFAULT_DESC_PROVIDER,
             api_url=DEFAULT_DESC_API_URL,
+            max_tokens=4096,
         )
 
         # Handle both old (string) and new (dict) response formats
@@ -294,12 +316,12 @@ def evaluate_irr(
                 )
                 logging.warning(f"[{task_identifier}] IRR: No step descriptions")
 
-        # Case 3: Error during evaluation
+        # Case 3: Conflict or error during evaluation
         else:
             irr_result["irr_percentage"] = 0
-            irr_result["evaluation_method"] = "evaluation_error"
-            irr_result["analysis_reason"] = "Task evaluation encountered an error"
-            logging.warning(f"[{task_identifier}] IRR: 0% (evaluation error)")
+            irr_result["evaluation_method"] = "evaluation_conflict" if final_result == -1 else "evaluation_error"
+            irr_result["analysis_reason"] = "Task evaluation result is conflict/uncertain" if final_result == -1 else "Task evaluation encountered an error"
+            logging.warning(f"[{task_identifier}] IRR: 0% ({irr_result['evaluation_method']})")
 
         # Save IRR analysis to separate JSON file
         irr_json_path = os.path.join(target_dir, "irr_analysis.json")
@@ -368,6 +390,9 @@ def evaluate_badcase(
     if final_result == 1:
         logging.info(f"[{task_identifier}] Skipping BadCase analysis (task succeeded)")
         return None
+
+    if final_result == -1:
+        logging.info(f"[{task_identifier}] BadCase analysis for conflict/uncertain result...")
 
     logging.info(
         f"[{task_identifier}] Attempt {attempt_num}: Starting BadCase analysis..."
@@ -581,6 +606,7 @@ def memgui_evaluator(
     attempt_num=None,
     reasoning_mode="direct",
     action_mode="with_action",
+    enable_last_step_input=False,
 ):
     """
     Main function for evaluating a task.
@@ -593,6 +619,7 @@ def memgui_evaluator(
         attempt_num: Attempt number
         reasoning_mode: Reasoning mode used
         action_mode: Action mode used
+        enable_last_step_input: Whether to pass last step model input to evaluator
     """
     dataset = get_dataset(utils.get_results_csv_path(result_dir))
     task_description = dataset.loc[task_identifier]["task_description"]
@@ -627,6 +654,34 @@ def memgui_evaluator(
         return -1
 
     evaluation_detail = {}
+
+    # Read last step thinking from detailed_model_logs.json if enabled
+    last_step_thinking = None
+    if enable_last_step_input:
+        detailed_logs_path = os.path.join(target_dir, "detailed_model_logs.json")
+        if os.path.exists(detailed_logs_path):
+            try:
+                with open(detailed_logs_path, "r", encoding="utf-8") as f:
+                    detailed_logs = json.load(f)
+                if detailed_logs and len(detailed_logs) > 0:
+                    last_log_entry = detailed_logs[-1]
+                    last_step_thinking = (
+                        last_log_entry.get("thinking") or
+                        last_log_entry.get("reasoning_content")
+                    )
+                    if not last_step_thinking:
+                        raw_response = (
+                            last_log_entry.get("raw_response") or
+                            (last_log_entry.get("mobile", {}).get("raw_response") if isinstance(last_log_entry.get("mobile"), dict) else "")
+                        )
+                        if raw_response:
+                            thinking_match = re.search(r"<thinking>\s*(.*?)\s*</thinking>", raw_response, re.DOTALL | re.IGNORECASE)
+                            if thinking_match:
+                                last_step_thinking = thinking_match.group(1).strip()
+                    if last_step_thinking:
+                        logging.info(f"[{task_identifier}] Found last step thinking, length: {len(last_step_thinking)}")
+            except Exception as e:
+                logging.warning(f"[{task_identifier}] Failed to read last step thinking: {e}")
 
     # Step 1: Visualize actions
     # print(f"[{task_identifier}] Step 1: Visualizing actions...")
@@ -799,10 +854,13 @@ def memgui_evaluator(
             )
             pre_eval_puzzle_path = os.path.join(puzzle_dir, "puzzle.png")
 
+        ref_entry = _get_reference_answer(task_identifier)
+        ref_answer = ref_entry["answer"] if ref_entry else ""
+
         (
             system_prompt_decision,
             user_prompt_decision,
-        ) = get_final_decision_prompt(task_description, prompt_descriptions, "")
+        ) = get_final_decision_prompt(task_description, prompt_descriptions, "", last_step_thinking, ref_answer)
         response = inference_chat_gemini_1_image(
             system_prompt_decision,
             user_prompt_decision,
@@ -810,6 +868,7 @@ def memgui_evaluator(
             model=DEFAULT_MODEL,
             provider=DEFAULT_PROVIDER,
             api_url=DEFAULT_API_URL,
+            max_tokens=4096,
         )
 
         # Handle response format and extract usage info
@@ -840,9 +899,12 @@ def memgui_evaluator(
         uncertainty_reason = decision_data.get("reason", "")
 
         # --- Phase 3: Supplemental Screenshots if Requested ---
-        if int(decision_data.get("decision", -1)) == -1 and decision_data.get(
+        # decision -1 with required_steps means LLM wants more screenshots (uncertain)
+        # decision -1 without required_steps means LLM detected a conflict
+        llm_decision_val = int(decision_data.get("decision", -1))
+        if llm_decision_val == -1 and decision_data.get(
             "required_steps"
-        ):
+         ):
             logging.info(
                 f"[{task_identifier}] LLM requested supplemental screenshots for steps: {decision_data['required_steps']}. Proceeding to gather images."
             )
@@ -874,7 +936,7 @@ def memgui_evaluator(
                     system_prompt_final,
                     user_prompt_final,
                 ) = get_final_decision_with_screenshots_prompt(
-                    task_description, prompt_descriptions, uncertainty_reason
+                    task_description, prompt_descriptions, uncertainty_reason, last_step_thinking, ref_answer
                 )
                 final_response = inference_chat_gemini_1_image(
                     system_prompt_final,
@@ -883,6 +945,7 @@ def memgui_evaluator(
                     model=DEFAULT_MODEL,
                     provider=DEFAULT_PROVIDER,
                     api_url=DEFAULT_API_URL,
+                    max_tokens=4096,
                 )
 
                 # Handle response format and extract usage info
@@ -931,10 +994,15 @@ def memgui_evaluator(
 
         # Extract failure step information if task failed
         failure_step = None
-        if result == 0:  # Task failed
+        conflict_detail = None
+        if result == 0:
             failure_step = decision_data.get("failure_step")
             if failure_step is not None:
                 logging.info(f"[{task_identifier}] Task failed at step: {failure_step}")
+        elif result == -1:
+            conflict_detail = decision_data.get("conflict_detail", "")
+            if conflict_detail:
+                logging.info(f"[{task_identifier}] Conflict detected: {conflict_detail}")
 
         logging.info(
             f"[{task_identifier}] Evaluation result: {result}, Reason: {reason}"
@@ -943,6 +1011,7 @@ def memgui_evaluator(
         evaluation_detail["final_decision_response"] = decision_data
         evaluation_detail["final_result"] = result
         evaluation_detail["failure_step"] = failure_step
+        evaluation_detail["conflict_detail"] = conflict_detail
 
     except (json.JSONDecodeError, ValueError, Exception) as e:
         logging.error(f"Error during final decision for {task_identifier}: {e}")
@@ -951,9 +1020,11 @@ def memgui_evaluator(
         evaluation_detail["final_decision_response"] = {
             "reason": f"Failed: {e}",
             "decision": -1,
+            "raw_response": response_str,
         }
         evaluation_detail["final_result"] = -1
         evaluation_detail["failure_step"] = None
+        evaluation_detail["conflict_detail"] = f"System error: {e}"
 
     # Calculate separated usage and cost tracking
     total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
@@ -1048,6 +1119,10 @@ def memgui_evaluator(
     if evaluation_detail.get("failure_step") is not None:
         final_decision_data["failure_step"] = evaluation_detail.get("failure_step")
 
+    # Add conflict detail if available
+    if evaluation_detail.get("conflict_detail"):
+        final_decision_data["conflict_detail"] = evaluation_detail.get("conflict_detail")
+
     if not isinstance(final_decision_data, dict) or "reason" not in final_decision_data:
         reason = str(
             evaluation_detail.get("final_decision_response", "Error in final decision")
@@ -1109,6 +1184,7 @@ def memgui_evaluator(
         "final_result": evaluation_detail.get("final_result", -1),
         "final_reason": reason,
         "failure_step": evaluation_detail.get("failure_step"),
+        "conflict_detail": evaluation_detail.get("conflict_detail"),
         "step_by_step_analysis": step_descriptions,
     }
 
@@ -1217,6 +1293,11 @@ if __name__ == "__main__":
         choices=["no_action", "with_action", "text_action"],
         help="The action mode for the evaluator.",
     )
+    parser.add_argument(
+        "--enable_last_step_input",
+        action="store_true",
+        help="Enable passing the last step model input (including thinking) to the evaluator.",
+    )
 
     args = parser.parse_args()
 
@@ -1231,4 +1312,5 @@ if __name__ == "__main__":
         attempt_num=args.attempt_num,
         reasoning_mode=args.reasoning_mode,
         action_mode=args.action_mode,
+        enable_last_step_input=args.enable_last_step_input,
     )

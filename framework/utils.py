@@ -93,15 +93,17 @@ def setup_avd(
 ):
     from .utils_clone_avd import clone_avd
 
+    src_android_avd_home = source_avd_home
+
     for idx in range(num_of_copies):
         clone_avd(
             src_avd_dir=os.path.join(source_avd_home, source_avd_name + ".avd"),
             src_ini_file=os.path.join(source_avd_home, source_avd_name + ".ini"),
             src_avd_name=source_avd_name,
             tar_avd_name=f"{source_avd_name}_{idx}",
-            src_android_avd_home=r"C:\Users\User\.android\avd",
+            src_android_avd_home=src_android_avd_home,
             tar_android_avd_home=avd_home,
-            src_sdk=r"C:\Users\User\AppData\Local\Android\Sdk",
+            src_sdk=target_sdk_path,
             tar_sdk=target_sdk_path,
             target_linux=os.name == "posix",
         )
@@ -813,9 +815,9 @@ def save_result__completed_execution(
             
             # Save timing record for inference
             save_timing_record(
-                output_dir, task_id, agent_name, attempt_num, 
-                reasoning_mode="", action_mode="", 
-                inference_time=elapsed_time_total
+                output_dir, task_id, agent_name, attempt_num,
+                reasoning_mode="", action_mode="",
+                inference_time=elapsed_time_total, device_id=device
             )
 
             # Calculate step ratio (ratio of actual steps to some expected maximum)
@@ -846,8 +848,8 @@ def save_timing_record(
     action_mode: str,
     inference_time: float = None,
     eval_time: float = None,
-    result: int = None,
     device_id: str = None,
+    eval_result: str = None,
 ) -> pd.DataFrame:
     """Save timing record to a separate CSV file.
 
@@ -860,21 +862,26 @@ def save_timing_record(
         action_mode: Action mode
         inference_time: Inference time in seconds (optional)
         eval_time: Evaluation time in seconds (optional)
-        result: Task result (1 for success, 0 for fail, None for not evaluated)
-        device_id: Device serial number (optional)
+        device_id: Device identifier (optional)
+        eval_result: Evaluation result (optional)
     """
     timing_csv_path = os.path.join(output_dir, "timing_records.csv")
 
     if os.path.exists(timing_csv_path):
         df = pd.read_csv(timing_csv_path)
-        if "result" in df.columns and df["result"].dtype == "float64":
-            df["result"] = df["result"].astype(object)
     else:
         df = pd.DataFrame(columns=[
             "task_id", "agent_name", "attempt_num", "reasoning_mode", "action_mode",
-            "inference_time", "eval_time", "result", "device_id"
+            "inference_time", "eval_time", "device_id", "eval_result"
         ])
-        df["result"] = df["result"].astype(object)
+
+    prefix = get_col_name_from_template(
+        "",
+        agent_name=agent_name,
+        eval_name=reasoning_mode,
+        sub_eval_name=action_mode,
+        attempt_num=attempt_num,
+    )
 
     existing_idx = df[
         (df["task_id"] == task_id) &
@@ -884,23 +891,16 @@ def save_timing_record(
         (df["action_mode"] == action_mode)
     ].index
 
-    # Convert result to word
-    result_word = None
-    if result == 1:
-        result_word = "success"
-    elif result == 0:
-        result_word = "fail"
-
     if len(existing_idx) > 0:
         idx = existing_idx[0]
         if inference_time is not None:
             df.loc[idx, "inference_time"] = inference_time
         if eval_time is not None:
             df.loc[idx, "eval_time"] = eval_time
-        if result is not None:
-            df.loc[idx, "result"] = result_word
         if device_id is not None:
             df.loc[idx, "device_id"] = device_id
+        if eval_result is not None:
+            df.loc[idx, "eval_result"] = eval_result
     else:
         new_row = {
             "task_id": task_id,
@@ -910,8 +910,8 @@ def save_timing_record(
             "action_mode": action_mode,
             "inference_time": inference_time if inference_time is not None else 0.0,
             "eval_time": eval_time if eval_time is not None else 0.0,
-            "result": result_word if result_word is not None else None,
-            "device_id": device_id if device_id is not None else None,
+            "device_id": device_id if device_id is not None else "",
+            "eval_result": eval_result if eval_result is not None else "",
         }
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
@@ -1036,6 +1036,7 @@ def save_result__completed_evaluation(
         str(failure_step) if failure_step is not None else ""
     )
 
+    df = df.copy()
     df.reset_index(inplace=True)
     try_save_csv(df, get_results_csv_path(output_dir))
     return df
@@ -1087,6 +1088,19 @@ def save_badcase_result(
         sub_eval_name=action_mode,
         attempt_num=attempt_num,
     )
+
+    # Ensure columns are object type to avoid dtype conflicts when assigning strings
+    badcase_columns = [
+        f"{prefix}_badcase_category",
+        f"{prefix}_badcase_confidence",
+        f"{prefix}_badcase_analysis_reason",
+        f"{prefix}_badcase_key_failure_point",
+        f"{prefix}_badcase_evidence",
+        f"{prefix}_badcase_suggested_improvement",
+    ]
+    for col in badcase_columns:
+        if col in df.columns:
+            df[col] = df[col].astype(object)
 
     # Save BadCase analysis fields
     df.loc[task_identifier, f"{prefix}_badcase_category"] = badcase_category
@@ -1483,6 +1497,7 @@ def execute_evaluation(
     reasoning_mode,
     action_mode,
     attempt_dir,
+    device_id=None,
     result_overwrite=False,
 ):
     """
@@ -1497,6 +1512,7 @@ def execute_evaluation(
         reasoning_mode: Reasoning mode
         action_mode: Action mode
         attempt_dir: Attempt directory
+        device_id: Device identifier (optional)
         result_overwrite: Whether to overwrite existing results
     """
     # 如果不是覆盖模式，先检查是否已有评估结果
@@ -1553,6 +1569,9 @@ def execute_evaluation(
         f"--action_mode {action_mode}"
     )
 
+    if config.get("ENABLE_LAST_STEP_INPUT_IN_EVAL", False):
+        command += " --enable_last_step_input"
+
     print(f"Evaluating task: {task_identifier}, attempt: {attempt}...")
 
     import time
@@ -1564,12 +1583,29 @@ def execute_evaluation(
         )
     except subprocess.TimeoutExpired:
         eval_elapsed_time = time.time() - eval_start_time
-        save_timing_record(output_dir, task_identifier, agent_name, attempt, reasoning_mode, action_mode, eval_time=eval_elapsed_time)
+        save_timing_record(output_dir, task_identifier, agent_name, attempt, reasoning_mode, action_mode, eval_time=eval_elapsed_time, device_id=device_id, eval_result="E")
         print(f"Evaluation script for attempt {attempt} timed out after {eval_timeout} seconds.")
         return False
 
     eval_elapsed_time = time.time() - eval_start_time
-    save_timing_record(output_dir, task_identifier, agent_name, attempt, reasoning_mode, action_mode, eval_time=eval_elapsed_time)
+
+    eval_result = None
+    eval_summary_path = os.path.join(attempt_dir, "evaluation_summary.json")
+    if os.path.exists(eval_summary_path):
+        try:
+            with open(eval_summary_path, "r", encoding="utf-8") as f:
+                eval_data = json.load(f)
+                final_result = eval_data.get("final_result", -1)
+                if final_result == 1:
+                    eval_result = "S"
+                elif final_result == 0:
+                    eval_result = "F"
+                else:
+                    eval_result = "E"
+        except Exception:
+            pass
+
+    save_timing_record(output_dir, task_identifier, agent_name, attempt, reasoning_mode, action_mode, eval_time=eval_elapsed_time, device_id=device_id, eval_result=eval_result)
 
     if eval_process.returncode != 0:
         print(
@@ -1588,8 +1624,8 @@ def immediate_evaluate_and_update_pass_at_k(
     attempt,
     reasoning_mode,
     action_mode,
-    result_overwrite=False,
     device_id=None,
+    result_overwrite=False,
 ):
     """
     立即评估任务并更新pass@k状态
@@ -1601,12 +1637,24 @@ def immediate_evaluate_and_update_pass_at_k(
         attempt: Attempt number
         reasoning_mode: Reasoning mode
         action_mode: Action mode
+        device_id: Device identifier (optional)
         result_overwrite: Whether to overwrite existing results
-        device_id: Device serial number (optional)
     """
     attempt_dir = os.path.join(
         output_dir, task_identifier, agent_name, f"attempt_{attempt}"
     )
+
+    if device_id is None:
+        prefix = get_col_name_from_template(
+            "", agent_name=agent_name, attempt_num=attempt
+        )
+        results_df = get_results_df(output_dir)
+        if not results_df.empty and "task_identifier" in results_df.columns:
+            task_row = results_df[results_df["task_identifier"] == task_identifier]
+            if not task_row.empty:
+                device_col = f"{prefix}_device"
+                if device_col in task_row.columns:
+                    device_id = task_row.iloc[0].get(device_col)
 
     # 执行评估
     eval_success = execute_evaluation(
@@ -1618,12 +1666,12 @@ def immediate_evaluate_and_update_pass_at_k(
         reasoning_mode,
         action_mode,
         attempt_dir,
+        device_id,
         result_overwrite,
     )
 
     if not eval_success:
         print(f"Evaluation failed for task {task_identifier}, attempt {attempt}")
-        save_timing_record(output_dir, task_identifier, agent_name, attempt, reasoning_mode, action_mode, result=0, device_id=device_id)
         return False
 
     # Record task completion for timing
@@ -1653,7 +1701,6 @@ def immediate_evaluate_and_update_pass_at_k(
         print(
             f"Could not find result for task {task_identifier} attempt {attempt} in CSV."
         )
-        save_timing_record(output_dir, task_identifier, agent_name, attempt, reasoning_mode, action_mode, result=0, device_id=device_id)
         return False
 
     eval_result_val = task_row.iloc[0][result_col_name]
@@ -1661,7 +1708,6 @@ def immediate_evaluate_and_update_pass_at_k(
     if eval_result_val == "S":
         print(f"Task {task_identifier} Attempt {attempt} was successful!")
         update_success_tracking(output_dir, task_identifier, agent_name, attempt)
-        save_timing_record(output_dir, task_identifier, agent_name, attempt, reasoning_mode, action_mode, result=1, device_id=device_id)
         return True
     elif eval_result_val == "E":
         print(
@@ -1674,7 +1720,6 @@ def immediate_evaluate_and_update_pass_at_k(
             f"Task {task_identifier} Attempt {attempt} has unknown evaluation result: {eval_result_val}"
         )
 
-    save_timing_record(output_dir, task_identifier, agent_name, attempt, reasoning_mode, action_mode, result=0, device_id=device_id)
     return False
 
 
@@ -1921,8 +1966,24 @@ def collect_evaluation_tasks(
                         "attempt": attempt,
                         "attempt_dir": attempt_dir,
                         "task": task,
+                        "device_id": None,
                     }
                 )
+
+    for eval_task in eval_tasks:
+        device_id = None
+        prefix = get_col_name_from_template(
+            "", agent_name=eval_task["agent_name"], attempt_num=eval_task["attempt"]
+        )
+        results_df = get_results_df(output_dir)
+        if not results_df.empty and "task_identifier" in results_df.columns:
+            task_row = results_df[results_df["task_identifier"] == eval_task["task_identifier"]]
+            if not task_row.empty:
+                device_col = f"{prefix}_device"
+                if device_col in task_row.columns:
+                    device_id = task_row.iloc[0].get(device_col)
+
+        eval_task["device_id"] = device_id
 
     print(
         f"收集到 {len(eval_tasks)} 个需要评估的任务，跳过 {skipped_count} 个已有结果或缺少文件的任务"

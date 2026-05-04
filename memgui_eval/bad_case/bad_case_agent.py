@@ -317,7 +317,7 @@ def calculate_bad_case_for_task(
         )
         
         response = inference_chat_gemini_wo_image(
-            system_prompt, user_prompt, model=model, provider=provider, api_url=api_url
+            system_prompt, user_prompt, model=model, provider=provider, api_url=api_url, max_tokens=4096
         )
         
         if isinstance(response, dict):

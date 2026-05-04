@@ -65,5 +65,5 @@ def analyze_timing(csv_path: str):
 if __name__ == "__main__":
 
     
-    csv_path = "/data2/wcl/MemGUI-Bench/results/session-memgui-v26042608-debug/timing_records.csv"
+    csv_path = "/data2/wcl/MemGUI-Bench/results/session-memgui-v26050315-new-Gemini-v2/timing_records.csv"
     analyze_timing(csv_path)

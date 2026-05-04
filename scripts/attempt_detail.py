@@ -127,7 +127,7 @@ def main():
 
     # 如果传入的是results目录，找出最新的session
     if session_dir == "/data2/wcl/MemGUI-Bench/results" or session_dir == "results":
-        session_dir = "/data2/wcl/MemGUI-Bench/results/session-memgui-v26050215-new-owl-success2-standard"
+        session_dir = "/data2/wcl/MemGUI-Bench/results/session-memgui-v26050315-new-owl"
 
     if args.output:
         with open(args.output, "w") as f:

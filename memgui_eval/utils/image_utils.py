@@ -33,7 +33,7 @@ def stitch_images_vertically(image_paths: List[str]) -> Image:
 
 def stitch_images_horizontally(
     image_paths: List[str], labels: Optional[List[str]] = None
-) -> Image:
+ ) -> Image:
     """
     Stitches a list of images together horizontally and adds optional labels.
 

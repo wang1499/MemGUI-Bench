@@ -10,153 +10,14 @@ from typing import Any
 
 from android_world.agents import base_agent
 from android_world.agents import qwen3_vl
+from android_world.agents import qwen_propmt
 from android_world.env import interface
 from android_world.env import json_action
 
 
 Colors = qwen3_vl.Colors
 
-
-SYSTEM_PROMPT_V1 = """
-You are a helpful assistant that can help with tasks on a mobile device.
-
-# Tools
-
-You may call up to 3 tools in a single step.
-Each tool type may be called AT MOST ONCE per step.
-Valid tool names are exactly:
-1. `mobile_use`
-2. `write_todos`
-3. `write_memory`
-
-If you call multiple tools in one step, output multiple `<tool_call>...</tool_call>` blocks.
-Never output more than 3 `<tool_call>` blocks.
-Never call the same tool name twice in one step.
-
-You are provided with function signatures within <tools></tools> XML tags:
-<tools>
-{
-  "type": "function",
-  "function": {
-    "name": "mobile_use",
-    "description": "Use a touchscreen to interact with a mobile device.
-* The screen resolution is normalized to 1000x1000.
-* Use this tool for clicking, typing, swiping, waiting, answering, pressing system buttons, and terminating.
-* If the task is completed, terminate with status=success.
-* If the task is infeasible, terminate with status=failure.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "action": {
-          "type": "string",
-          "enum": ["click", "long_press", "swipe", "type", "answer", "system_button", "wait", "terminate"]
-        },
-        "coordinate": {"type": "array"},
-        "coordinate2": {"type": "array"},
-        "text": {"type": "string"},
-        "time": {"type": "number"},
-        "button": {
-          "type": "string",
-          "enum": ["Back", "Home", "Menu", "Enter"]
-        },
-        "status": {
-          "type": "string",
-          "enum": ["success", "failure"]
-        }
-      },
-      "required": ["action"]
-    }
-  }
-}
-{
-  "type": "function",
-  "function": {
-    "name": "write_todos",
-    "description": "Create or update a structured todo list for complex tasks.
-Use this only when todo tracking helps execution.
-Important rules adapted from planner-style todo systems:
-* Mark todos as completed immediately after finishing each step.
-* Keep exactly one task as in_progress unless parallel work is truly necessary.
-* Do not use this for trivial tasks.
-* Use clear, actionable task names.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "merge": {
-          "type": "boolean",
-          "description": "If true, merge todos by id; if false, replace the whole todo list."
-        },
-        "todos": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "id": {"type": "string"},
-              "content": {"type": "string"},
-              "status": {
-                "type": "string",
-                "enum": ["pending", "in_progress", "completed"]
-              },
-              "priority": {
-                "type": "string",
-                "enum": ["high", "medium", "low"]
-              }
-            },
-            "required": ["id", "content", "status", "priority"]
-          }
-        }
-      },
-      "required": ["merge", "todos"]
-    }
-  }
-}
-{
-  "type": "function",
-  "function": {
-    "name": "write_memory",
-    "description": "Store durable task memory such as discovered facts, constraints, partial findings, credentials, locations, or user preferences for reuse in later steps.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "operation": {
-          "type": "string",
-          "enum": ["add", "update", "delete"]
-        },
-        "memory_id": {"type": "string"},
-        "description": {"type": "string"},
-        "content": {"type": "string"}
-      },
-      "required": ["operation", "memory_id"]
-    }
-  }
-}
-</tools>
-
-For each function call, return a JSON object within <tool_call></tool_call> XML tags:
-<tool_call>
-{"name": <function-name>, "arguments": <args-json-object>}
-</tool_call>
-
-# Response format
-
-Response format for every step:
-1) Thinking: a single short <thinking>...</thinking> block.
-2) Tool calls: 1 to 3 <tool_call>...</tool_call> blocks.
-3) Conclusion: a short <conclusion>...</conclusion> block.
-
-Rules:
-- Output exactly in the order: <thinking>, one-or-more <tool_call>, <conclusion>.
-- Each tool type can appear at most once.
-- At most 3 total tool calls in one response.
-- Be brief: one sentence for <thinking>, one for <conclusion>.
-- Do not output anything else.
-- If you only need bookkeeping, you may omit `mobile_use` and only call `write_todos` / `write_memory`.
-- **Task Feasibility**: If you determine the task is INFEASIBLE (e.g., required resources don't exist, prerequisites are missing, or the task is impossible to complete), use `action=terminate` with `status="failure"` immediately.
-- If task is successfully completed, use `action=terminate` with `status="success"`.
-- **Search Tip**: When search suggestions appear after typing, **click the suggestion directly** - most mobile apps do NOT respond to Enter key.
-
-"""
-
+SYSTEM_PROMPT_V1 = qwen_propmt.SYSTEM_PROMPT_V1
 
 class Qwen3VLV1(qwen3_vl.Qwen3VL):
     """Qwen3-VL v1 agent with todo and memory tools."""
@@ -709,7 +570,8 @@ class Qwen3VLV1(qwen3_vl.Qwen3VL):
             self._update_qwen3_vl_data(
                 goal, step_num + 1, step_data, parsed_action_dict, conclusion
             )
-            return base_agent.AgentInteractionResult(False, step_data)
+            should_end_task = "answer" in goal.lower()
+            return base_agent.AgentInteractionResult(should_end_task, step_data)
 
         try:
             actual_action_coordinates = self.env.execute_action(action)

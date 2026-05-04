@@ -6,7 +6,10 @@ framework/models/MobileAgent/Mobile-Agent-v2/screenshot*
 framework/models/MobileAgent/Mobile-Agent-v2/temp*
 framework/models/groundingdino_swint_ogc.pth
 screenshot
+results_v1
 results
+
+
 config.yaml
 tmp
 tmp.ipynb

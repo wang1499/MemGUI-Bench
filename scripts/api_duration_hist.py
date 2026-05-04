@@ -10,8 +10,8 @@ from collections import defaultdict
 def load_durations(results_dir):
     durations = []
     patterns = [
-        os.path.join(results_dir, "*/Qwen3VL*/attempt_1/detailed_model_logs.json"),
-        os.path.join(results_dir, "session-*/Qwen3VL*/attempt_1/detailed_model_logs.json"),
+        os.path.join(results_dir, "*/Qwen3VL*/attempt_*/detailed_model_logs.json"),
+        os.path.join(results_dir, "session-*/Qwen3VL*/attempt_*/detailed_model_logs.json"),
     ]
     for pattern in patterns:
         for path in sorted(glob.glob(pattern)):
@@ -72,7 +72,7 @@ def histogram(durations, bin_size=1.0):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        results_dir = "/data2/wcl/MemGUI-Bench/results/session-memgui-v26050215-new-owl1"#"/data2/wcl/MemGUI-Bench/results"
+        results_dir = "/data2/wcl/MemGUI-Bench/results/session-memgui-v26050315-new-owl-v2"#"/data2/wcl/MemGUI-Bench/results"
     else:
         results_dir = sys.argv[1]
     bin_size = float(sys.argv[2]) if len(sys.argv) > 2 else 1.0

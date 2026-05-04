@@ -1,0 +1,42 @@
+{
+    "041-CheckRamCompatibilityAndPrice": {
+        "answer": "Compatible, $429.99",
+        "reason": "The Corsair 32GB DDR5 RAM has a clock speed of 6000MHz, and the ASUS ROG Strix Z790-E motherboard supports speeds up to 7800 MT/s. Since 6000MHz <= 7800 MT/s, the RAM is compatible. The correct answer should be the price of the RAM.",
+        "note": "Model output price may vary; a price close to the one found in the shopping app is acceptable."
+    },
+    "042-CheckSsdCompatibilityAndPrice": {
+        "answer": "Not compatible",
+        "reason": "The Samsung 1TB External SSD has a read/write speed of approximately 1,050 MB/s, while the PS5 requires an external SSD speed of at least 5,000 MB/s (5 GB/s). Since 1,050 MB/s < 5,000 MB/s, the SSD does not meet the PS5's speed requirement.",
+        "note": ""
+    },
+    "055-SearchAndCalculate": {
+        "answer": "",
+        "reason": "",
+        "note": "Dynamic answer depending on current exchange rates. Human extension needed."
+    },
+    "056-SearchAndCalculate": {
+        "answer": "",
+        "reason": "",
+        "note": "Dynamic answer depending on current stock prices. Human extension needed."
+    },
+    "093-MultiAppPriceComparison": {
+        "answer": "",
+        "reason": "",
+        "note": "Dynamic answer depending on current prices. Human extension needed."
+    },
+    "094-MultiAppPriceComparison": {
+        "answer": "",
+        "reason": "",
+        "note": "Dynamic answer depending on current prices. Human extension needed."
+    },
+    "109-AnalyzeMarketAndInvest": {
+        "answer": "",
+        "reason": "",
+        "note": "Dynamic answer depending on current stock price and revenue growth rate. Human extension needed."
+    },
+    "110-AnalyzeMarketAndInvest": {
+        "answer": "",
+        "reason": "",
+        "note": "Dynamic answer depending on current stock price and revenue growth rate. Human extension needed."
+    }
+}
