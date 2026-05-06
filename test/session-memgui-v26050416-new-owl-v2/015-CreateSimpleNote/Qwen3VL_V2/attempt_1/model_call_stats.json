@@ -1,0 +1,58 @@
+{
+  "total_model_calls": 8,
+  "total_prompt_tokens": 83028,
+  "total_completion_tokens": 1552,
+  "average_prompt_tokens_per_call": 10378.5,
+  "average_completion_tokens_per_call": 194.0,
+  "total_api_call_duration": 26.490843296051025,
+  "average_api_call_duration": 3.311355412006378,
+  "tool_call_stats": {
+    "mobile_use": 8,
+    "write_todos": 8,
+    "write_memories": 3
+  },
+  "final_todo_state": [
+    {
+      "id": "open_joplin",
+      "content": "Open the Joplin app",
+      "status": "completed"
+    },
+    {
+      "id": "create_note",
+      "content": "Create a new note titled 'Shopping List' and add the content 'Milk and bread'",
+      "status": "completed"
+    },
+    {
+      "id": "add_title",
+      "content": "Enter the title 'Shopping List' in the active title field",
+      "status": "completed"
+    },
+    {
+      "id": "enter_content",
+      "content": "Enter the content 'Milk and bread' in the active text field",
+      "status": "in_progress"
+    }
+  ],
+  "final_memory_state": [
+    {
+      "memory_id": "joplin_app_opened",
+      "content": "Joplin app has been opened successfully.",
+      "step": 3
+    },
+    {
+      "memory_id": "joplin_app_visible",
+      "content": "Joplin app icon is visible on the home screen.",
+      "step": 2
+    },
+    {
+      "memory_id": "note_content",
+      "content": "Milk and bread",
+      "step": 4
+    },
+    {
+      "memory_id": "note_title",
+      "content": "Shopping List",
+      "step": 4
+    }
+  ]
+}

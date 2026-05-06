@@ -1,0 +1,158 @@
+{
+  "total_model_calls": 17,
+  "total_prompt_tokens": 189060,
+  "total_completion_tokens": 4700,
+  "average_prompt_tokens_per_call": 11121.176470588236,
+  "average_completion_tokens_per_call": 276.47058823529414,
+  "total_api_call_duration": 86.64883208274841,
+  "average_api_call_duration": 5.096990122514613,
+  "tool_call_stats": {
+    "mobile_use": 17,
+    "write_todos": 17,
+    "write_memories": 16
+  },
+  "final_todo_state": [
+    {
+      "id": "open_app",
+      "content": "Open the BBC Sports app",
+      "status": "completed"
+    },
+    {
+      "id": "click_menu",
+      "content": "Click the menu icon at top-left corner",
+      "status": "completed"
+    },
+    {
+      "id": "expand_all_sport",
+      "content": "Expand the 'All Sport' section",
+      "status": "completed"
+    },
+    {
+      "id": "select_football",
+      "content": "Select 'Football' from the expanded menu",
+      "status": "completed"
+    },
+    {
+      "id": "click_scores_fixtures",
+      "content": "Click on the 'Scores & Fixtures' tab at the top of the screen",
+      "status": "completed"
+    },
+    {
+      "id": "search_team",
+      "content": "Type 'Bayern Munich' into the search bar",
+      "status": "completed"
+    },
+    {
+      "id": "click_search_icon",
+      "content": "Click the search icon at the bottom right corner",
+      "status": "completed"
+    },
+    {
+      "id": "navigate_to_all_teams",
+      "content": "Navigate to the All Teams section",
+      "status": "completed"
+    },
+    {
+      "id": "swipe_up",
+      "content": "Swipe up to scroll down the team list",
+      "status": "in_progress"
+    }
+  ],
+  "final_memory_state": [
+    {
+      "memory_id": "all_teams_page_loaded",
+      "content": "true",
+      "step": 15
+    },
+    {
+      "memory_id": "app_loading",
+      "content": "false",
+      "step": 4
+    },
+    {
+      "memory_id": "app_name",
+      "content": "BBC Sport",
+      "step": 4
+    },
+    {
+      "memory_id": "current_date",
+      "content": "Today",
+      "step": 8
+    },
+    {
+      "memory_id": "football_section_position",
+      "content": "visible in sports menu",
+      "step": 6
+    },
+    {
+      "memory_id": "football_section_visible",
+      "content": "true",
+      "step": 4
+    },
+    {
+      "memory_id": "football_tab_active",
+      "content": "true",
+      "step": 7
+    },
+    {
+      "memory_id": "menu_opened",
+      "content": "true",
+      "step": 5
+    },
+    {
+      "memory_id": "page_title",
+      "content": "All Teams",
+      "step": 15
+    },
+    {
+      "memory_id": "screen_loading",
+      "content": "false",
+      "step": 13
+    },
+    {
+      "memory_id": "search_bar_placeholder",
+      "content": "Enter a team or competition",
+      "step": 9
+    },
+    {
+      "memory_id": "search_bar_text",
+      "content": "Enter a team or competition",
+      "step": 13
+    },
+    {
+      "memory_id": "search_icon_visible",
+      "content": "true",
+      "step": 11
+    },
+    {
+      "memory_id": "search_results_loaded",
+      "content": "true",
+      "step": 14
+    },
+    {
+      "memory_id": "selected_day",
+      "content": "Fri 10",
+      "step": 9
+    },
+    {
+      "memory_id": "selected_month_year",
+      "content": "May 2026",
+      "step": 9
+    },
+    {
+      "memory_id": "sports_menu_opened",
+      "content": "true",
+      "step": 6
+    },
+    {
+      "memory_id": "team_list_categories",
+      "content": "Home nations and Ireland, Premier League, Scottish Premiership, Championship",
+      "step": 17
+    },
+    {
+      "memory_id": "team_names",
+      "content": "England men, England women, Northern Ireland men, Northern Ireland women, Republic of Ireland men, Republic of Ireland women, Scotland men, Scotland women, Wales men, Wales women, AFC Bournemouth, Arsenal, Aston Villa, Brentford, Brighton & Hove Albion, Burnley, Everton, Fulham, Leeds United, Liverpool, Manchester City, Manchester United, Newcastle United, Nottingham Forest, Tottenham Hotspur, Wolverhampton Wanderers, Aberdeen, Celtic, Dundee United, Falkirk, Heart of Midlothian, Hibernian, Kilmarnock, Livingston, Motherwell, Rangers, St Mirren, Birmingham City, Blackburn Rovers, Charlton Athletic",
+      "step": 17
+    }
+  ]
+}

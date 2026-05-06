@@ -25,6 +25,8 @@ from memgui_eval.utils.prompts import (
     get_final_decision_prompt,
     get_describe_final_step_prompt,
     get_final_decision_with_screenshots_prompt,
+    get_final_decision_prompt_v3,
+    get_final_decision_with_screenshots_prompt_v3,
 )
 from memgui_eval.utils.common import (
     parse_json_from_response,
@@ -801,6 +803,9 @@ def memgui_evaluator(
             DEFAULT_MODEL,
             DEFAULT_PROVIDER,
             DEFAULT_API_URL,
+            DEFAULT_MODEL_V3,
+            DEFAULT_PROVIDER_V3,
+            DEFAULT_API_URL_V3,
         )
 
         # Create pre_eval_puzzle.png with last 3 screenshots
@@ -988,6 +993,81 @@ def memgui_evaluator(
                     "decision": -1,
                     "reason": "LLM requested screenshots that could not be found.",
                 }
+
+        # --- Dual Model Comparison: v3 (env-aware) vs baseline ---
+        try:
+            system_prompt_v3, user_prompt_v3 = get_final_decision_prompt_v3(
+                task_description, prompt_descriptions, "", last_step_thinking, ref_answer
+            )
+            response_v3 = inference_chat_gemini_1_image(
+                system_prompt_v3,
+                user_prompt_v3,
+                pre_eval_puzzle_path,
+                model=DEFAULT_MODEL_V3,
+                provider=DEFAULT_PROVIDER_V3,
+                api_url=DEFAULT_API_URL_V3,
+                max_tokens=4096,
+            )
+            if isinstance(response_v3, dict):
+                response_v3_str = response_v3["content"]
+                v3_usage = response_v3.get("usage", {})
+                v3_model_info = {
+                    "model": response_v3.get("model"),
+                    "provider": response_v3.get("provider"),
+                    "api_cost": response_v3.get("api_cost", 0.0),
+                }
+            else:
+                response_v3_str = response_v3
+                v3_usage = {}
+                v3_model_info = {"model": "unknown", "provider": "unknown", "api_cost": 0.0}
+
+            log_and_save_interaction(
+                target_dir,
+                "final_decision_v3_phase1",
+                system_prompt_v3,
+                user_prompt_v3,
+                response_v3_str,
+            )
+            decision_data_v3 = parse_json_from_response(response_v3_str)
+            v3_result = int(decision_data_v3.get("decision", -1))
+            v3_reason = decision_data_v3.get("reason", "No reason provided.")
+            v3_failure_step = decision_data_v3.get("failure_step")
+            v3_failure_type = decision_data_v3.get("failure_type", "agent_failure")
+
+            logging.info(
+                f"[{task_identifier}] v3 (env-aware) result: {v3_result}, reason: {v3_reason}"
+            )
+
+            evaluation_detail["v3_decision_response"] = decision_data_v3
+            evaluation_detail["v3_final_result"] = v3_result
+            evaluation_detail["v3_failure_step"] = v3_failure_step
+            evaluation_detail["v3_failure_type"] = v3_failure_type
+            evaluation_detail["v3_model_info"] = v3_model_info
+            evaluation_detail["v3_usage"] = v3_usage
+
+            dual_comparison = {
+                "baseline_result": int(decision_data.get("decision", -1)),
+                "v3_result": v3_result,
+                "baseline_reason": decision_data.get("reason", ""),
+                "v3_reason": v3_reason,
+                "v3_failure_type": v3_failure_type,
+                "disagree": int(decision_data.get("decision", -1)) != v3_result,
+            }
+            evaluation_detail["dual_model_comparison"] = dual_comparison
+            if dual_comparison["disagree"]:
+                logging.info(
+                    f"[{task_identifier}] DUAL MODEL DISAGREEMENT: baseline={dual_comparison['baseline_result']} vs v3={dual_comparison['v3_result']}"
+                )
+        except Exception as e:
+            logging.error(f"[{task_identifier}] Error in v3 dual model comparison: {e}")
+            evaluation_detail["v3_decision_response"] = {"reason": f"v3 error: {e}", "decision": -1}
+            evaluation_detail["v3_final_result"] = -1
+            evaluation_detail["dual_model_comparison"] = {
+                "baseline_result": int(decision_data.get("decision", -1)),
+                "v3_result": -1,
+                "disagree": False,
+                "error": str(e),
+            }
 
         result = int(decision_data.get("decision", -1))
         reason = decision_data.get("reason", "No reason provided.")

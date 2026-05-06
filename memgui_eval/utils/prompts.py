@@ -82,6 +82,18 @@ def _get_evaluation_guidelines() -> str:
 6.  **VLM Role Clarification**: The VLM is a screen UI parser — it ONLY reads and describes what is visible on the screen. It does NOT execute actions, and it does NOT generate action descriptions (those come from the agent). VLM-parsed screen descriptions may contain errors (misread numbers, omitted elements, hallucinated details); always cross-reference with raw action logs and screenshots. Reliability priority: Raw Action Log > Screenshots > VLM-parsed screen description."""
 
 
+def _get_env_aware_guidelines() -> str:
+    """Returns the environment-aware evaluation guidelines (v3)."""
+    return _get_evaluation_guidelines() + """
+
+7.  **Environment Robustness Evaluation**: You MUST distinguish between agent capability failures and environment-induced failures:
+    - **Network Issues**: If the screenshots, action logs, or task context show signs of network connectivity problems (e.g., "network error", "connection failed", "no internet", "loading timeout", "request timed out", "504 Gateway Timeout", blank/grey screens that suggest failed content loading), this is an ENVIRONMENT failure, NOT an agent failure. The agent's reasoning and action selection may have been correct, but the environment prevented execution. In these cases, consider the task outcome as 'environment_issue'.
+    - **App/Service Unavailable**: If an app crashes, shows "app not found", "service unavailable", "content blocked", "access denied", or similar error screens unrelated to the agent's actions, this is also an ENVIRONMENT failure. The agent cannot be blamed for failing to complete a task when the required app/service is unreachable. Mark such cases as 'app_not_found'.
+    - **Agent Failures (Real Failures)**: Only mark a task as FAILED (decision=0) when the agent's reasoning, action selection, or execution was genuinely wrong (e.g., clicked wrong button, wrong search query, incomplete information retrieval, incorrect comparison/conclusion).
+    - **Key Distinction**: Ask yourself — "Did the agent do the RIGHT thing given what it could see and know, but the environment failed it?" OR "Did the agent's reasoning/execution actually fail?" The former is an environment issue; the latter is a real failure.
+    - **Evidence Sources**: Check BOTH the text descriptions (action_reasoning, action_detail, final_reason) AND the screenshots for environmental failure signals. Do NOT rely solely on the final outcome — a task that 'failed' due to network timeout is a different failure type than a task where the agent clicked the wrong button."""
+
+
 def _get_base_final_decision_prompt(
     task_description: str, step_descriptions: list
  ) -> (str, str):
@@ -305,6 +317,194 @@ def get_task_feasibility_prompt(
         "- 'Search for restaurants nearby' - feasible if maps/search apps are available\n"
         "- 'Take a photo' - feasible if camera access is available\n\n"
         "Provide your assessment in JSON format."
+    )
+    return system_prompt, user_prompt
+
+
+def _get_base_final_decision_prompt_v3(
+    task_description: str, step_descriptions: list
+) -> (str, str):
+    """Internal helper to generate the v3 env-aware system prompt and formatted steps."""
+    system_prompt = f"""You are an expert in evaluating mobile UI automation tasks.{_get_env_aware_guidelines()}"""
+
+    formatted_steps = []
+    for i, desc_obj in enumerate(step_descriptions):
+        if isinstance(desc_obj, dict):
+            step_label = f"Step {i + 1}"
+            vlm_action = desc_obj.get("action_description", "N/A")
+            vlm_ui = desc_obj.get("ui_description", "N/A")
+            raw_action = desc_obj.get("_raw_action", {})
+            raw_action_type = raw_action.get("type", "N/A")
+            raw_action_detail = raw_action.get("detail", "N/A")
+
+            formatted_steps.append(
+                f"- {step_label}:\n"
+                f"  - Raw Action Log: type=`{raw_action_type}`, detail=`{raw_action_detail}`\n"
+                f"  - Screen UI Description (VLM-parsed): {vlm_ui}\n"
+                f"  - Agent Action Description: {vlm_action}\n"
+            )
+        else:
+            step_label = f"Step {i + 1}"
+            formatted_steps.append(f"- {step_label}: {desc_obj}")
+    formatted_steps_str = "\n".join(formatted_steps)
+
+    base_user_prompt = (
+        f"Task Description: '{task_description}'\n\n"
+        "Here is a step-by-step breakdown of the agent's actions. Each step contains three parts:\n"
+        "- **Raw Action Log**: The exact action recorded by the system (ground truth of what was executed).\n"
+        "- **Screen UI Description (VLM-parsed)**: A VLM parsed the screenshot and described the UI elements visible on screen. This is ONLY a screen reading/parsing aid — the VLM does NOT execute actions and may misread numbers, omit elements, or hallucinate details.\n"
+        "- **Agent Action Description**: A natural-language description of what the agent did in this step.\n\n"
+        "**Reliability Priority**: Raw Action Log > Screenshots > Screen UI Description (VLM-parsed). When the VLM-parsed screen description conflicts with raw logs or screenshots, trust the raw logs and screenshots. If a critical conflict cannot be resolved (e.g., a key number differs between sources and cannot be verified), use decision = -1 to flag the conflict.\n\n"
+        f"{formatted_steps_str}\n\n"
+    )
+    return system_prompt, base_user_prompt
+
+
+def get_final_decision_prompt_v3(
+    task_description: str,
+    step_descriptions: list,
+    uncertainty_reason: str = "",
+    last_step_thinking: str = None,
+    reference_answer: str = "",
+) -> (str, str):
+    """
+    Creates v3 env-aware prompts for final decision, with network/app failure detection.
+    This phase includes step-by-step descriptions and the last 3 screenshots.
+    """
+    system_prompt, base_user_prompt = _get_base_final_decision_prompt_v3(
+        task_description, step_descriptions
+    )
+
+    if uncertainty_reason:
+        system_prompt += f"""
+ A previous, less-informed evaluation stage was 'Uncertain' for the following reason: '{uncertainty_reason}'.
+ Please pay special attention to this aspect. You are now provided with more information (detailed step descriptions and the last 3 screenshots).
+ """
+
+    user_prompt = base_user_prompt
+
+    if reference_answer:
+        user_prompt += (
+            f"**REFERENCE ANSWER**: The expected reference answer for this task is: '{reference_answer}'\n"
+            "Use this reference answer as a benchmark to evaluate whether the agent's final output matches the expected result. "
+            "If the agent's answer is semantically equivalent or numerically close to the reference answer, consider it correct.\n\n"
+        )
+
+    if last_step_thinking:
+        user_prompt += (
+            f"**MODEL FINAL STEP THINKING**: The following is the model's internal reasoning from its final step:\n"
+            f"```\n{last_step_thinking}\n"
+            f"```\n\n"
+            "Please note that the above is the model's own internal reasoning/thinking process. Use this to better understand what the model intended to do in its final step. However, remember that the model's actual output/action is what matters for evaluation, not its internal reasoning.\n\n"
+        )
+
+    user_prompt += (
+        "You are now provided with a composite image of the last 3 screenshots. Note that this is only a partial view of the execution. You must synthesize this visual information with the full list of text descriptions to understand the complete workflow.\n\n"
+        "**CRITICAL WARNING ABOUT VLM-PARSED DESCRIPTIONS**: The 'Screen UI Description (VLM-parsed)' fields are generated by a screen-reading VLM that may misread numbers, omit UI elements, or hallucinate details. They are NOT from the task executor. When VLM-parsed descriptions conflict with raw action logs or screenshots, trust the raw logs and screenshots.\n\n"
+        "**ENVIRONMENT FAILURE DETECTION (v3)**: You MUST actively look for evidence of environment failures in BOTH the text descriptions and screenshots. Common signals include:\n"
+        "  - Network errors: 'network error', 'connection failed', 'no internet', 'loading timeout', 'request timed out', '504', '502', 'network unavailable', 'offline'\n"
+        "  - App/Service errors: 'app not found', 'service unavailable', 'content blocked', 'access denied', 'crash', 'force close', 'ANR'\n"
+        "  - Visual indicators in screenshots: blank/grey screens, error dialogs, loading spinners that never resolved, 'no connection' screens\n\n"
+        "**MANDATORY VERIFICATION**: Before making any decision, you MUST verify that ALL key information required by the task description is present in either:\n"
+        "1. The text descriptions, OR\n"
+        "2. The provided screenshots\n\n"
+        "If critical information is missing, you should make a reasonable judgment based on the available evidence. If the evidence suggests the task was likely completed correctly, decide success; otherwise, decide failure.\n\n"
+        "**CONFLICT HANDLING**: If you find a critical conflict between information sources (e.g., VLM text says the price is $29.99 but the screenshot shows $49.99, and this number is essential for task evaluation), and you cannot determine which source is correct, use decision = -1 to flag the conflict. Do NOT guess — flagging a conflict is better than making a wrong decision.\n\n"
+        "**FINAL DECISION REQUIRED**: Based on all available information, respond with one of four decisions:\n"
+        "- decision 1: Task completed successfully.\n"
+        "- decision 0: Task failed — agent's reasoning or execution was wrong (include 'failure_step').\n"
+        "- decision -1: Critical information conflict — cannot reliably determine success or failure (include 'conflict_detail').\n"
+        "- decision -2: Task failed due to environment issues (network/app failure), NOT agent capability failure. The agent may have reasoned correctly but the environment prevented completion (include 'failure_step' and set 'failure_type'='environment_issue').\n\n"
+        "**FAILURE STEP TRACKING**: If you determine the task failed (decision = 0 or -2), you MUST specify exactly which step number caused the failure by including a 'failure_step' field with the step number where the critical error occurred. Additionally, in your 'reason' field, you MUST include a specific explanation of why you identified this particular step as the failure point. For environment issues (-2), clearly state what environmental factor caused the failure.\n\n"
+        "Example (Success):\n"
+        "```json\n"
+        '{\n  "decision": 1,\n  "reason": "Task completed successfully. The agent correctly navigated to the target app, performed the required actions, and achieved the desired outcome."\n}\n'
+        "```\n\n"
+        "Example (Agent Failure):\n"
+        "```json\n"
+        '{\n  "decision": 0,\n  "reason": "Task failed at step 4 where wrong product was selected. Step 4 was the failure point because the agent selected an incorrect item despite correct ones being visible.",\n  "failure_step": 4\n}\n'
+        "```\n\n"
+        "Example (Environment Failure - Network):\n"
+        "```json\n"
+        "{\n  \"decision\": -2,\n  \"reason\": \"Task failed at step 3 due to network timeout. The agent correctly searched for the product and was about to click on it, but the page failed to load with a 504 Gateway Timeout error. The agent cannot be blamed for this failure.\",\n  \"failure_step\": 3,\n  \"failure_type\": \"environment_issue\"\n}\n"
+        "```\n\n"
+        "Example (Conflict/Uncertain):\n"
+        "```json\n"
+        '{\n  "decision": -1,\n  "reason": "Cannot determine task outcome due to conflicting information.",\n  "conflict_detail": "VLM-parsed screen description states the price is $29.99 but the screenshot shows $49.99. The correct price is essential for evaluating whether the agent found the right product."\n}\n'
+        "```"
+    )
+    return system_prompt, user_prompt
+
+
+def get_final_decision_with_screenshots_prompt_v3(
+    task_description: str,
+    step_descriptions: list,
+    uncertainty_reason: str = "",
+    last_step_thinking: str = None,
+    reference_answer: str = "",
+) -> (str, str):
+    """
+    Creates v3 env-aware prompts for final decision with supplemental screenshots.
+    This is used when the LLM requests additional screenshots for clarification.
+    """
+    system_prompt, base_user_prompt = _get_base_final_decision_prompt_v3(
+        task_description, step_descriptions
+    )
+    system_prompt += f"""
+ You previously requested specific screenshots for clarification because you were uncertain. The reason for uncertainty was: '{uncertainty_reason}'.
+ You are now provided with a composite image showing the critical step screenshots you requested. This image is only a partial view of the execution; you must synthesize this visual information with the full list of text descriptions to understand the complete workflow.
+ Based on ALL available information, you must now make a FINAL and DEFINITIVE judgment. Your decision must be success (1), failure (0), conflict (-1), or environment_failure (-2). Do not request more information.
+ """
+
+    user_prompt = base_user_prompt
+
+    if reference_answer:
+        user_prompt += (
+            f"**REFERENCE ANSWER**: The expected reference answer for this task is: '{reference_answer}'\n"
+            "Use this reference answer as a benchmark to evaluate whether the agent's final output matches the expected result. "
+            "If the agent's answer is semantically equivalent or numerically close to the reference answer, consider it correct.\n\n"
+        )
+
+    if last_step_thinking:
+        user_prompt += (
+            f"**MODEL FINAL STEP THINKING**: The following is the model's internal reasoning from its final step:\n"
+            f"```\n{last_step_thinking}\n"
+            f"```\n\n"
+            "Please note that the above is the model's own internal reasoning/thinking process. Use this to better understand what the model intended to do in its final step. However, remember that the model's actual output/action is what matters for evaluation, not its internal reasoning.\n\n"
+        )
+
+    user_prompt += (
+        "And here is the image with the supplemental screenshots you requested.\n\n"
+        "**ENVIRONMENT FAILURE DETECTION (v3)**: You MUST actively look for evidence of environment failures in BOTH the text descriptions and screenshots. Common signals include:\n"
+        "  - Network errors: 'network error', 'connection failed', 'no internet', 'loading timeout', 'request timed out', '504', '502', 'network unavailable', 'offline'\n"
+        "  - App/Service errors: 'app not found', 'service unavailable', 'content blocked', 'access denied', 'crash', 'force close', 'ANR'\n"
+        "  - Visual indicators in screenshots: blank/grey screens, error dialogs, loading spinners that never resolved, 'no connection' screens\n\n"
+        "**MANDATORY VERIFICATION**: Before making any decision, you MUST verify that ALL key information required by the task description is present in either:\n"
+        "1. The text descriptions, OR\n"
+        "2. The provided screenshots\n\n"
+        "**CONFLICT HANDLING**: If you find a critical conflict between information sources (e.g., VLM text says the price is $29.99 but the screenshot shows $49.99, and this number is essential for task evaluation), and you cannot determine which source is correct, use decision = -1 to flag the conflict. Do NOT guess — flagging a conflict is better than making a wrong decision.\n\n"
+        "**FINAL DECISION REQUIRED**: Based on all available information, respond with one of four decisions:\n"
+        "- decision 1: Task completed successfully.\n"
+        "- decision 0: Task failed — agent's reasoning or execution was wrong (include 'failure_step').\n"
+        "- decision -1: Critical information conflict — cannot reliably determine success or failure (include 'conflict_detail').\n"
+        "- decision -2: Task failed due to environment issues (network/app failure), NOT agent capability failure (include 'failure_step' and 'failure_type'='environment_issue').\n\n"
+        "**FAILURE STEP TRACKING**: If you determine the task failed (decision = 0 or -2), you MUST specify exactly which step number caused the failure by including a 'failure_step' field with the step number where the critical error occurred.\n\n"
+        "Example (Success):\n"
+        "```json\n"
+        '{\n  "decision": 1,\n  "reason": "Task completed successfully. All required actions were performed correctly."\n}\n'
+        "```\n\n"
+        "Example (Agent Failure):\n"
+        "```json\n"
+        '{\n  "decision": 0,\n  "reason": "Task failed at step 4 where wrong product was selected.",\n  "failure_step": 4\n}\n'
+        "```\n\n"
+        "Example (Environment Failure):\n"
+        "```json\n"
+        '{\n  "decision": -2,\n  "reason": "Task failed at step 3 due to network timeout. The agent correctly searched for the product.",\n  "failure_step": 3,\n  "failure_type": "environment_issue"\n}\n'
+        "```\n\n"
+        "Example (Conflict/Uncertain):\n"
+        "```json\n"
+        '{\n  "decision": -1,\n  "reason": "Cannot determine task outcome due to conflicting information.",\n  "conflict_detail": "VLM-parsed screen description states the price is $29.99 but the screenshot shows $49.99."\n}\n'
+        "```"
     )
     return system_prompt, user_prompt
 

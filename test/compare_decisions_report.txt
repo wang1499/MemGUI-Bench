@@ -1,0 +1,42 @@
+======================================================================
+两阶段决策对比报告 (Baseline vs Env-Aware v3)
+======================================================================
+
+总任务数: 19 个任务 | 19 条评估记录
+
+【一致性】
+  两阶段结论一致: 17 条 (89.5%)
+  两阶段结论分歧: 2 条 (10.5%)
+
+【Baseline 原始结果分布】
+  成功 (decision=1):  7 条
+  失败 (decision=0):  12 条
+  冲突 (decision=-1): 0 条
+
+【v3 环境感知结果分布】
+  成功 (decision=1):     6 条
+  失败-智能体 (decision=0):  12 条
+  失败-环境 (decision=-2):  1 条
+
+【关键分歧分析】(共 2 条)
+
+  ◆ Baseline误判为智能体失败，实际为环境问题或成功: 1 条
+    [002-FindProductAndFilter] baseline=0(失败(智能体)) -> v3=-2(失败(环境问题))
+      v3理由: The task requires opening the Amazon app, but the app is not present on the device's home screen. Th
+
+  ◆ 其他分歧: 1 条
+    [078-CheckAndNotePermissions] baseline=1 -> v3=0
+
+【v3识别的环境问题任务】(1 条)
+  [002-FindProductAndFilter] v3_reason: The task requires opening the Amazon app, but the app is not present on the device's home screen. The agent correctly id
+
+【详细分歧列表】
+  [002-FindProductAndFilter] Qwen3VL attempt_1
+    Baseline: 0(失败(智能体)) | The agent failed at the first step by incorrectly declaring the task infeasible.
+    v3:      -2(失败(环境问题)) | The task requires opening the Amazon app, but the app is not present on the devi
+    v3_failure_type: environment_issue
+
+  [078-CheckAndNotePermissions] Qwen3VL attempt_1
+    Baseline: 1(成功) | The agent successfully completed all parts of the task. It correctly identified 
+    v3:      0(失败(智能体)) | Task failed because the agent did not correctly navigate to the 'Special app acc
+    v3_failure_type: agent_failure

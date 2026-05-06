@@ -3,7 +3,7 @@
 # Usage: ./check.sh [session_path]
 #   Default session: /data2/wcl/MemGUI-Bench/results/session-memgui-v26050315-new-owl-v2
 
-SESSION_PATH="${1:-/data2/wcl/MemGUI-Bench/results/session-memgui-v26050416-new-owl}"
+SESSION_PATH="${1:-/data2/wcl/MemGUI-Bench/results/session-memgui-v26050510-new-owl-all}"
 
 echo "=========================================="
 echo "Session Check"

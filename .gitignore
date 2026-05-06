@@ -18,7 +18,7 @@ screenlog*
 .ruff_cache
 screenshot_*
 temp_*
-*test*
+
 swift
 flagged
 framework/avd/

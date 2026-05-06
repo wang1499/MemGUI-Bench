@@ -1,0 +1,103 @@
+{
+  "total_model_calls": 12,
+  "total_prompt_tokens": 130386,
+  "total_completion_tokens": 2661,
+  "average_prompt_tokens_per_call": 10865.5,
+  "average_completion_tokens_per_call": 221.75,
+  "total_api_call_duration": 62.5768666267395,
+  "average_api_call_duration": 5.2147388855616255,
+  "tool_call_stats": {
+    "mobile_use": 12,
+    "write_todos": 12,
+    "write_memories": 11
+  },
+  "final_todo_state": [
+    {
+      "id": "open_amazon_app",
+      "content": "Open the Amazon app",
+      "status": "completed"
+    },
+    {
+      "id": "search_running_shoes",
+      "content": "Tap on the search bar and enter 'running shoes for men'",
+      "status": "completed"
+    },
+    {
+      "id": "enter_search_query",
+      "content": "Type 'running shoes for men' into the search bar",
+      "status": "completed"
+    },
+    {
+      "id": "apply_filters",
+      "content": "Tap on the filter icon to access filtering options",
+      "status": "completed"
+    },
+    {
+      "id": "select_brand_asics",
+      "content": "Select the ASICS brand from the list of brands",
+      "status": "completed"
+    },
+    {
+      "id": "select_size_10",
+      "content": "Select the Men's Shoe Size 10 filter",
+      "status": "completed"
+    }
+  ],
+  "final_memory_state": [
+    {
+      "memory_id": "amazon_app_icon",
+      "content": "Amazon Shopping app icon visible in app drawer",
+      "step": 2
+    },
+    {
+      "memory_id": "brands_filter_open",
+      "content": "Brands filter menu expanded showing ASICS selected.",
+      "step": 10
+    },
+    {
+      "memory_id": "filter_brand",
+      "content": "Brands filter option available",
+      "step": 7
+    },
+    {
+      "memory_id": "filter_size",
+      "content": "Men's Shoe Size filter option available",
+      "step": 7
+    },
+    {
+      "memory_id": "men_shoe_size_filter",
+      "content": "Men's Shoe Size filter option available",
+      "step": 10
+    },
+    {
+      "memory_id": "open_amazon_app",
+      "content": "Open the Amazon app - completed",
+      "step": 3
+    },
+    {
+      "memory_id": "search_bar_active",
+      "content": "Search bar active with keyboard open",
+      "step": 4
+    },
+    {
+      "memory_id": "search_bar_text",
+      "content": "Search bar contains 'running shoes for men' with suggestions shown below",
+      "step": 5
+    },
+    {
+      "memory_id": "search_running_shoes",
+      "content": "Tap on the search bar and enter 'running shoes for men' - completed",
+      "step": 4
+    },
+    {
+      "memory_id": "search_suggestions",
+      "content": "Search suggestions displayed after entering 'running shoes for men'",
+      "step": 5
+    },
+    {
+      "memory_id": "size_10_selected",
+      "content": "Size 10 selected in Men's Shoe Size filter and applied.",
+      "step": 12
+    }
+  ]
+}

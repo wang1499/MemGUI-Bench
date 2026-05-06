@@ -1,0 +1,246 @@
+{
+  "summary": {
+    "total_tasks": 19,
+    "total_records": 19,
+    "agree": 17,
+    "disagree": 2,
+    "baseline_success": 7,
+    "baseline_fail": 12,
+    "v3_env_failure": 1
+  },
+  "disagree_records": [
+    {
+      "task_id": "002-FindProductAndFilter",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 0,
+      "v3_decision": -2,
+      "baseline_reason": "The agent failed at the first step by incorrectly declaring the task infeasible. The required Amazon app was not on the immediate home screen, but the agent made no attempt to find it, for example, by",
+      "v3_reason": "The task requires opening the Amazon app, but the app is not present on the device's home screen. The agent correctly identified this prerequisite was not met and declared the task as infeasible. This",
+      "v3_failure_type": "environment_issue",
+      "disagree": true
+    },
+    {
+      "task_id": "078-CheckAndNotePermissions",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 1,
+      "v3_decision": 0,
+      "baseline_reason": "The agent successfully completed all parts of the task. It correctly identified that 0 apps had 'Wi-Fi control' permission and 0 apps were allowed to 'Install unknown apps'. It then opened the Joplin ",
+      "v3_reason": "Task failed because the agent did not correctly navigate to the 'Special app access' section in the Settings app. Instead of navigating to the correct sub-menu, the agent attempted to use the search f",
+      "v3_failure_type": "agent_failure",
+      "disagree": true
+    }
+  ],
+  "all_records": [
+    {
+      "task_id": "035-CheckProductCompatibility",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 0,
+      "v3_decision": 0,
+      "baseline_reason": "The agent failed to complete the primary objective of the task, which was to search for three different products on the Amazon app and gather specific information. The agent encountered an issue with ",
+      "v3_reason": "The task failed because the agent did not perform the required information-gathering steps. After the Amazon app became unresponsive (an environment issue in step 6), the agent did not attempt to retr",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    },
+    {
+      "task_id": "012-SetMeetingAlarmByWorldClock",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 0,
+      "v3_decision": 0,
+      "baseline_reason": "The agent failed to complete the full task. While it successfully added 'Beijing, China' and 'Buenos Aires, Argentina' to the world clock, it did not proceed to the subsequent, crucial steps. The task",
+      "v3_reason": "The agent failed to complete all parts of the task. While it successfully added 'Beijing' and 'Buenos Aires' to the world clock, it did not proceed to the subsequent required steps: 1) comparing the t",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    },
+    {
+      "task_id": "041-CheckRamCompatibilityAndPrice",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 0,
+      "v3_decision": 0,
+      "baseline_reason": "The agent failed to complete a critical step of the task. It did not filter the Amazon search results for the \"Corsair\" brand as instructed. Instead, it looked at the unfiltered search results, identi",
+      "v3_reason": "Task failed because the agent did not follow a critical instruction. The task required filtering the search results for the 'Corsair' brand on Amazon, but the agent skipped this step. Consequently, it",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    },
+    {
+      "task_id": "015-CreateSimpleNote",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 1,
+      "v3_decision": 1,
+      "baseline_reason": "The agent successfully completed all parts of the task. It opened the Joplin app, created a new note, correctly set the title to \"Shopping List\", and added the content \"Milk and bread\". The final scre",
+      "v3_reason": "The agent successfully completed all steps of the task. It opened the Joplin app, created a new note, correctly entered the title 'Shopping List', and added the content 'Milk and bread'. The final scr",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    },
+    {
+      "task_id": "003-RecordAndNameAudio",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 0,
+      "v3_decision": 0,
+      "baseline_reason": "The agent successfully navigated to the Audio Recorder app and correctly configured the recording settings as per the task requirements (WAV, 48kHz, Mono) by step 7. However, in step 8, instead of pro",
+      "v3_reason": "The agent failed at step 8. After successfully opening the Audio Recorder app and correctly configuring the recording settings as required by the task (WAV, 48kHz, Mono), the agent inexplicably naviga",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    },
+    {
+      "task_id": "002-FindProductAndFilter",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 0,
+      "v3_decision": -2,
+      "baseline_reason": "The agent failed at the first step by incorrectly declaring the task infeasible. The required Amazon app was not on the immediate home screen, but the agent made no attempt to find it, for example, by",
+      "v3_reason": "The task requires opening the Amazon app, but the app is not present on the device's home screen. The agent correctly identified this prerequisite was not met and declared the task as infeasible. This",
+      "v3_failure_type": "environment_issue",
+      "disagree": true
+    },
+    {
+      "task_id": "007-AddDetailedTransaction",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 1,
+      "v3_decision": 1,
+      "baseline_reason": "The agent successfully completed all parts of the task. The final screenshot (Step 8) clearly shows a new expense transaction has been created with the name 'New Sneakers', an amount of 89.95, the cat",
+      "v3_reason": "The agent successfully completed all parts of the task. It opened the Bluecoins app, created a new expense transaction, and correctly entered the name 'New Sneakers', the amount '89.95', the category ",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    },
+    {
+      "task_id": "111-SearchAndSetWallpaper",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 0,
+      "v3_decision": 0,
+      "baseline_reason": "The task failed because the agent did not download the correct image as specified. The instructions required the agent to find the 'first image that has a portrait (vertical) orientation' and download",
+      "v3_reason": "The agent failed to follow critical instructions in the first half of the task. The task required finding a 'portrait (vertical)' oriented image and then 'long-press to download' it. In step 10, the a",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    },
+    {
+      "task_id": "005-SearchSportsScores",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 1,
+      "v3_decision": 1,
+      "baseline_reason": "Task completed successfully. The agent correctly navigated the BBC Sports app, handled a connection error, located the Football category, went to 'Scores & Fixtures', and successfully searched for 'Re",
+      "v3_reason": "The agent successfully completed all steps of the task. It opened the BBC Sports app, navigated to the Football category, then to 'Scores & Fixtures', and successfully searched for 'Real Madrid'. The ",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    },
+    {
+      "task_id": "026-FindAndCompareWikiStats",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 0,
+      "v3_decision": 0,
+      "baseline_reason": "The agent successfully found the populations of both Beijing and Shanghai and correctly identified that Shanghai has the larger population. However, the task required the agent to 'go to and remain on",
+      "v3_reason": "The agent failed to complete the task. It successfully found the populations for both Beijing (approx. 22 million) and Shanghai (approx. 29.5 million). The task required it to remain on the page for t",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    },
+    {
+      "task_id": "008-AddDetailedTransaction",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 0,
+      "v3_decision": 0,
+      "baseline_reason": "Task failed because the agent did not include the item name 'Summer Dress' in the final transaction. The agent initially made a mistake and saved a partial transaction in Step 5. It then started a new",
+      "v3_reason": "Task failed because the agent did not enter the item name 'Summer Dress' in the final transaction entry. While the agent correctly entered the amount (65.00), category ('Clothing'), and label ('Person",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    },
+    {
+      "task_id": "025-FindAndCompareWikiStats",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 0,
+      "v3_decision": 0,
+      "baseline_reason": "The agent successfully found the number of articles for both English and German Wikipedia editions. It correctly identified that the English Wikipedia has more articles. However, the task required the",
+      "v3_reason": "The agent successfully found the number of articles for both the English Wikipedia (>7 million) and the German Wikipedia (~3.1 million). However, it failed to complete the final part of the task, whic",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    },
+    {
+      "task_id": "006-SearchSportsScores",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 1,
+      "v3_decision": 1,
+      "baseline_reason": "The agent successfully completed all parts of the task. Although it initially got lost and performed an incorrect search in the wrong section (steps 7-9), it successfully corrected its path. From step",
+      "v3_reason": "The agent successfully completed all parts of the task. Although it made several navigational errors between steps 7 and 14, it managed to correct its mistakes and return to the correct path. By step ",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    },
+    {
+      "task_id": "023-ToggleSystemSetting",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 0,
+      "v3_decision": 0,
+      "baseline_reason": "The agent successfully navigated to the 'Navigation mode' settings page where the 'Circle to Search' option is located. However, it failed to perform the final required action, which was to turn the t",
+      "v3_reason": "Task failed because the agent did not complete the final requirement of turning off the 'Circle to Search' toggle. After correctly navigating to the 'Navigation mode' screen, the agent needed to scrol",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    },
+    {
+      "task_id": "068-PlanAndMessageRoute",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 0,
+      "v3_decision": 0,
+      "baseline_reason": "The agent failed to complete the task because it got stuck in a loop due to a misconfiguration in the Citymapper app. The app was set to San Francisco, but the task required locations in New York City",
+      "v3_reason": "The agent failed to complete the task because it could not overcome a recurring error. The Citymapper app was configured for San Francisco, but the task required locations in New York City. The agent ",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    },
+    {
+      "task_id": "016-CreateSimpleNote",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 1,
+      "v3_decision": 1,
+      "baseline_reason": "The agent successfully completed all steps of the task. It opened the Joplin app, created a new note, entered the specified title \"Meeting Minutes\", and added the required content \"Discuss progress on",
+      "v3_reason": "The agent successfully completed all the requirements of the task. It opened the Joplin app, created a new note, and correctly entered the specified title 'Meeting Minutes' and content 'Discuss progre",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    },
+    {
+      "task_id": "078-CheckAndNotePermissions",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 1,
+      "v3_decision": 0,
+      "baseline_reason": "The agent successfully completed all parts of the task. It correctly identified that 0 apps had 'Wi-Fi control' permission and 0 apps were allowed to 'Install unknown apps'. It then opened the Joplin ",
+      "v3_reason": "Task failed because the agent did not correctly navigate to the 'Special app access' section in the Settings app. Instead of navigating to the correct sub-menu, the agent attempted to use the search f",
+      "v3_failure_type": "agent_failure",
+      "disagree": true
+    },
+    {
+      "task_id": "001-FindProductAndFilter",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 1,
+      "v3_decision": 1,
+      "baseline_reason": "The agent successfully completed all parts of the task. It opened the Amazon app, searched for \"running shoes for men\", and then correctly applied filters for the brand \"ASICS\" and size \"10\". The fina",
+      "v3_reason": "The agent successfully completed the task. It opened the Amazon app, searched for \"running shoes for men,\" and correctly applied filters for the brand \"ASICS\" and size \"10.\" The final screenshot confi",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    },
+    {
+      "task_id": "028-NavigateAndCompareItems",
+      "model": "Qwen3VL",
+      "attempt": "attempt_1",
+      "baseline_decision": 0,
+      "v3_decision": 0,
+      "baseline_reason": "The agent failed to complete the core requirements of the task. It was supposed to identify two items based on the number of reviews in two different categories, compare their prices, and navigate to ",
+      "v3_reason": "The agent failed to complete the first part of the task. In step 13, it correctly navigated to the 'Parts & storage' category. However, in step 14, instead of identifying the item with the most review",
+      "v3_failure_type": "agent_failure",
+      "disagree": false
+    }
+  ]
+}

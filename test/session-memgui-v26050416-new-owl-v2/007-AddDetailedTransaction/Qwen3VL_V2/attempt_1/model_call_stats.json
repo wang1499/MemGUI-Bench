@@ -1,0 +1,93 @@
+{
+  "total_model_calls": 21,
+  "total_prompt_tokens": 236595,
+  "total_completion_tokens": 7652,
+  "average_prompt_tokens_per_call": 11266.42857142857,
+  "average_completion_tokens_per_call": 364.3809523809524,
+  "total_api_call_duration": 108.17029476165771,
+  "average_api_call_duration": 5.150966417221796,
+  "tool_call_stats": {
+    "mobile_use": 21,
+    "write_todos": 21,
+    "write_memories": 18
+  },
+  "final_todo_state": [
+    {
+      "id": "open_bluecoins_app",
+      "content": "Open the Bluecoins app from the home screen or app drawer.",
+      "status": "completed"
+    },
+    {
+      "id": "record_expense_transaction",
+      "content": "Record a new expense transaction for $89.95, name it 'New Sneakers', select 'Clothing' as the category, and assign the label 'Personal'.",
+      "status": "in_progress"
+    },
+    {
+      "id": "enter_transaction_name",
+      "content": "Enter 'New Sneakers' in the Payee or item field.",
+      "status": "completed"
+    },
+    {
+      "id": "set_transaction_amount",
+      "content": "Set the transaction amount to $89.95 using the calculator icon.",
+      "status": "in_progress"
+    },
+    {
+      "id": "select_category",
+      "content": "Select 'Clothing' as the category for the transaction.",
+      "status": "pending"
+    },
+    {
+      "id": "assign_label",
+      "content": "Assign the label 'Personal' to the transaction.",
+      "status": "pending"
+    },
+    {
+      "id": "click_decimal_point",
+      "content": "Click the decimal point button on the numeric keypad to proceed with entering the amount $89.95.",
+      "status": "completed"
+    },
+    {
+      "id": "click_digit_9",
+      "content": "Click the '9' key on the numeric keypad to set the tens place of the amount to 9.",
+      "status": "completed"
+    },
+    {
+      "id": "click_digit_9_again",
+      "content": "Click the '9' key on the numeric keypad again to set the units place of the amount to 9.",
+      "status": "completed"
+    },
+    {
+      "id": "click_digit_5",
+      "content": "Click the '5' key on the numeric keypad to set the tenths place of the amount to 5.",
+      "status": "in_progress"
+    }
+  ],
+  "final_memory_state": [
+    {
+      "memory_id": "app_name",
+      "content": "Bluecoins",
+      "step": 2
+    },
+    {
+      "memory_id": "transaction_amount",
+      "content": "$89.95",
+      "step": 21
+    },
+    {
+      "memory_id": "transaction_category",
+      "content": "'Clothing'",
+      "step": 21
+    },
+    {
+      "memory_id": "transaction_label",
+      "content": "'Personal'",
+      "step": 12
+    },
+    {
+      "memory_id": "transaction_name",
+      "content": "'New Sneakers'",
+      "step": 3
+    }
+  ]
+}

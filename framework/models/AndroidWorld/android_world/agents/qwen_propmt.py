@@ -202,8 +202,8 @@ Valid tool names are exactly:
 2. `write_todos`
 3. `write_memory`
 
-If you call multiple tools in one step, output multiple `<Action>...</Action>` blocks.
-Never output more than 3 `<Action>` blocks.
+If you call multiple tools in one step, output multiple `<tool_call>...</tool_call>` blocks.
+Never output more than 3 `<tool_call>` blocks.
 Never call the same tool name twice in one step.
 
 You are provided with function signatures within <tools></tools> XML tags:
@@ -305,20 +305,20 @@ Important rules adapted from planner-style todo systems:
 }
 </tools>
 
-For each function call, return a JSON object within <Action></Action> XML tags:
-<Action>
+For each function call, return a JSON object within <tool_call></tool_call> XML tags:
+<tool_call>
 {"name": <function-name>, "arguments": <args-json-object>}
-</Action>
+</tool_call>
 
 # Response format
 
 Response format for every step:
 1) Thinking: a single short <thinking>...</thinking> block.
-2) Tool calls: 1 to 3 <Action>...</Action> blocks.
+2) Tool calls: 1 to 3 <tool_call>...</tool_call> blocks.
 3) Conclusion: a short <conclusion>...</conclusion> block.
 
 Rules:
-- Output exactly in the order: <thinking>, one-or-more <Action>, <conclusion>.
+- Output exactly in the order: <thinking>, one-or-more <tool_call>, <conclusion>.
 - Each tool type can appear at most once.
 - At most 3 total tool calls in one response.
 - Be brief: one sentence for <thinking>, one for <conclusion>.
@@ -346,19 +346,19 @@ You can only call ONE tool: `mobile_use`
 """+MOBILE_USE_TOOL+"""
 </tools>
 
-For each function call, return a JSON object within <Action> XML tags:
-<Action>
+For each function call, return a JSON object within <tool_call> XML tags:
+<tool_call>
 {"name": <function-name>, "arguments": <args-json-object>}
-</Action>
+</tool_call>
 
 # Response format
 
 1) Thinking: a single short <thinking>...</thinking> block.
-2) Tool call: one <Action>...</Action> block.
+2) Tool call: one <tool_call>...</tool_call> block.
 3) Conclusion: a short <conclusion>...</conclusion> block.
 
 Rules:
-- Output exactly in the order: <thinking>, <Action>, <conclusion>.
+- Output exactly in the order: <thinking>, <tool_call>, <conclusion>.
 - Call mobile_use exactly once per step.
 - If task is completed, use action=terminate with status="success".
 - If task is infeasible, use action=terminate with status="failure".
@@ -377,9 +377,9 @@ You can only call ONE tool: `write_todos`
 
 # Output Format
 - If you need to update or create the todo list, output EXACTLY ONE tool call wrapped in XML:
-<Action>
+<tool_call>
 {"name": "write_todos", "arguments": { ... }}
-</Action>
+</tool_call>
 - If the current todo list aligns with the current execution state and no updates are needed, output EXACTLY the following string and nothing else:
 NO_CHANGE
 
@@ -411,9 +411,9 @@ You can only call ONE tool: `write_memories`
 
 # Output Format
 - If valuable information relevant to the user's goal is present in the current observation and needs to be stored or updated, output EXACTLY ONE tool call wrapped in XML:
-<Action>
+<tool_call>
 {"name": "write_memories", "arguments": { ... }}
-</Action>
+</tool_call>
 - If there is no relevant new information on the screen, OR if the information is already perfectly recorded in the current memory, output EXACTLY the following string and nothing else:
 NO_MEMORY_NEEDED
 
@@ -432,17 +432,17 @@ NO_MEMORY_NEEDED
 
 - Single Item Extraction:
   If Observation shows: "Corsair Vengeance DDR5 - $XX"
-  <Action>
+  <tool_call>
   {"name": "write_memories", "arguments": {"memories": [{"operation": "add", "memory_id": "corsair_ram_price", "content": "$XX"}]}}
-  </Action>
+  </tool_call>
 
 - Multi-item Extraction (if BOTH are on the same screen):
-  <Action>
+  <tool_call>
   {"name": "write_memories", "arguments": {"memories": [
     {"operation": "add", "memory_id": "item_a_price", "content": "$XX"},
     {"operation": "add", "memory_id": "item_b_price", "content": "$YY"}
   ]}}
-  </Action>
+  </tool_call>
 
 # Context Provided in Each Turn
 You will receive the user's original goal, the current todo list, the current memory bank, and the latest observation/result from the Executor. Based on these inputs, decide what information to store in memory.
@@ -465,21 +465,21 @@ You are provided with function signatures within <tools></tools> XML tags:
 """+MOBILE_USE_TOOL+"""
 </tools>
 
-For each function call, return a json object with function name and arguments within <Action></Action> XML tags:
-<Action>
+For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
+<tool_call>
 {"name": <function-name>, "arguments": <args-json-object>}
-</Action>
+</tool_call>
 
 # Response format
 
 Response format for every step:
 1) Thinking: a <thinking>...</thinking> block explaining the next move (no multi-step reasoning).
-2) Tool call: a <Action>...</Action> block containing only the JSON: {"name": <function-name>, "arguments": <args-json-object>}.
+2) Tool call: a <tool_call>...</tool_call> block containing only the JSON: {"name": <function-name>, "arguments": <args-json-object>}.
 3) Conclusion: a short <conclusion>...</conclusion> block describing the chosen action (Do NOT describe the expected outcome).
 
 
 Rules:
-- Output exactly in the order: <thinking>,<Action>,<conclusion>.
+- Output exactly in the order: <thinking>,<tool_call>,<conclusion>.
 - Be brief: one sentence for <thinking>, one for <conclusion>.
 - Do not output anything else outside those three parts.
 - **Anti-Looping**: Do NOT repeat previously failed actions multiple times. If an action fails or the screen doesn't change, try a different approach.

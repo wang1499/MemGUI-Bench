@@ -1,0 +1,138 @@
+{
+  "total_model_calls": 49,
+  "total_prompt_tokens": 686385,
+  "total_completion_tokens": 25251,
+  "average_prompt_tokens_per_call": 14007.857142857143,
+  "average_completion_tokens_per_call": 515.3265306122449,
+  "total_api_call_duration": 449.4167466163635,
+  "average_api_call_duration": 9.17177033910946,
+  "tool_call_stats": {
+    "mobile_use": 49,
+    "write_todos": 49,
+    "write_memories": 48
+  },
+  "final_todo_state": [
+    {
+      "id": "select_first_leg_destination",
+      "content": "Select the first Empire State Building location from the search results",
+      "status": "completed"
+    },
+    {
+      "id": "dismiss_error_message",
+      "content": "Dismiss the error message to continue setting the starting location.",
+      "status": "in_progress"
+    }
+  ],
+  "final_memory_state": [
+    {
+      "memory_id": "citymapper_app",
+      "content": "Citymapper app icon visible in app drawer",
+      "step": 2
+    },
+    {
+      "memory_id": "citymapper_home_screen",
+      "content": "Citymapper home screen showing map and search options like 'Get Me Somewhere', 'Get Me Home', 'Work', and 'Places'",
+      "step": 4
+    },
+    {
+      "memory_id": "current_search_term",
+      "content": "Empire State Building",
+      "step": 9
+    },
+    {
+      "memory_id": "empire_state_building_results",
+      "content": "Search results show multiple Empire State Building locations, including West 34th Street and 5th Avenue, New York, NY, USA.",
+      "step": 10
+    },
+    {
+      "memory_id": "error_message",
+      "content": "Error cleared; search field now contains 'Statue of Liberty' and a popup says 'Start is outside San Francisco'",
+      "step": 49
+    },
+    {
+      "memory_id": "first_leg_route",
+      "content": "Map shows route from Statue of Liberty National Monument to Empire State Building.",
+      "step": 48
+    },
+    {
+      "memory_id": "first_leg_route_details",
+      "content": "Map shows route from Statue of Liberty National Monument to Empire State Building.",
+      "step": 24
+    },
+    {
+      "memory_id": "first_leg_route_map",
+      "content": "Map showing route from Statue of Liberty National Monument to Empire State Building.",
+      "step": 34
+    },
+    {
+      "memory_id": "get_me_somewhere",
+      "content": "'Get Me Somewhere' search option visible on the screen",
+      "step": 4
+    },
+    {
+      "memory_id": "journey_end",
+      "content": "Empire State Building, 20 W 34th St., New York, NY 10001, USA",
+      "step": 28
+    },
+    {
+      "memory_id": "journey_start",
+      "content": "Statue of Liberty National Monument, New York, NY 10004, USA",
+      "step": 28
+    },
+    {
+      "memory_id": "keyboard_open",
+      "content": "Keyboard is open for text entry",
+      "step": 5
+    },
+    {
+      "memory_id": "map_view",
+      "content": "Map view showing Statue of Liberty National Monument to Empire State Building route.",
+      "step": 35
+    },
+    {
+      "memory_id": "phone_number",
+      "content": "+8613822229999",
+      "step": 1
+    },
+    {
+      "memory_id": "search_result_error",
+      "content": "Error cleared; search field now contains 'Statue of Liberty'",
+      "step": 33
+    },
+    {
+      "memory_id": "second_leg_destination",
+      "content": "The Metropolitan Museum of Art",
+      "step": 39
+    },
+    {
+      "memory_id": "second_leg_destination_address",
+      "content": "West 34th Street, New York, NY, USA",
+      "step": 47
+    },
+    {
+      "memory_id": "second_leg_route",
+      "content": "Map shows route from Empire State Building to The Metropolitan Museum of Art.",
+      "step": 42
+    },
+    {
+      "memory_id": "second_leg_route_details",
+      "content": "Map shows route from Empire State Building to The Metropolitan Museum of Art.",
+      "step": 45
+    },
+    {
+      "memory_id": "second_leg_route_map",
+      "content": "Map showing route from Empire State Building to The Metropolitan Museum of Art.",
+      "step": 43
+    },
+    {
+      "memory_id": "start_input_field",
+      "content": "Start input field active with search term 'Statue of Liberty' and a popup says 'Start is outside San Francisco'",
+      "step": 49
+    },
+    {
+      "memory_id": "statue_of_liberty_result",
+      "content": "Statue of Liberty National Monument, New York, NY, USA",
+      "step": 46
+    }
+  ]
+}

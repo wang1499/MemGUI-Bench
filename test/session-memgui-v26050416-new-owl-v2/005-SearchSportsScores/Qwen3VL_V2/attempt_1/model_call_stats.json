@@ -1,0 +1,78 @@
+{
+  "total_model_calls": 17,
+  "total_prompt_tokens": 188385,
+  "total_completion_tokens": 3907,
+  "average_prompt_tokens_per_call": 11081.470588235294,
+  "average_completion_tokens_per_call": 229.8235294117647,
+  "total_api_call_duration": 78.71772861480713,
+  "average_api_call_duration": 4.63045462440042,
+  "tool_call_stats": {
+    "mobile_use": 17,
+    "write_todos": 17,
+    "write_memories": 9
+  },
+  "final_todo_state": [
+    {
+      "id": "open_bbc_sports_app",
+      "content": "Open the BBC Sports app from the home screen or app drawer",
+      "status": "completed"
+    },
+    {
+      "id": "tap_football_category",
+      "content": "Tap on the Football category within the BBC Sports app",
+      "status": "completed"
+    },
+    {
+      "id": "access_scores_fixtures",
+      "content": "Proceed to 'Scores & Fixtures' in the Football section",
+      "status": "completed"
+    },
+    {
+      "id": "search_real_madrid",
+      "content": "Type 'Real Madrid' into the active search field",
+      "status": "completed"
+    },
+    {
+      "id": "select_real_madrid_team",
+      "content": "Select 'Real Madrid Men's Football Team' from the search suggestions",
+      "status": "completed"
+    }
+  ],
+  "final_memory_state": [
+    {
+      "memory_id": "bbc_sport_app_visible",
+      "content": "BBC Sport app icon is visible on the home screen",
+      "step": 2
+    },
+    {
+      "memory_id": "error_message_displayed",
+      "content": "Error message displayed after retry: 'There was a problem loading this content.'",
+      "step": 13
+    },
+    {
+      "memory_id": "football_category_visible",
+      "content": "Football category is visible in the All Sport menu",
+      "step": 5
+    },
+    {
+      "memory_id": "scores_fixtures_tab_visible",
+      "content": "'Scores & Fixtures' tab is visible at the top of the Football section",
+      "step": 6
+    },
+    {
+      "memory_id": "search_bar_active",
+      "content": "Search bar is active with keyboard ready for input",
+      "step": 9
+    },
+    {
+      "memory_id": "search_bar_visible",
+      "content": "Search bar labeled 'Enter a team or competition' is visible at the top of the Scores & Fixtures page and is now active.",
+      "step": 9
+    },
+    {
+      "memory_id": "search_results_for_real_madrid",
+      "content": "Search results show 'Real Madrid Men's Football Team', 'Spanish La Liga', 'Champions League', 'FIFA Club World Cup', 'Spanish Copa del Rey', and 'Atletico Madrid'.",
+      "step": 10
+    }
+  ]
+}

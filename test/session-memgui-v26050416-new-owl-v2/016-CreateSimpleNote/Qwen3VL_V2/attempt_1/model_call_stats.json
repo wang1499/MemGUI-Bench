@@ -1,0 +1,48 @@
+{
+  "total_model_calls": 4,
+  "total_prompt_tokens": 40587,
+  "total_completion_tokens": 887,
+  "average_prompt_tokens_per_call": 10146.75,
+  "average_completion_tokens_per_call": 221.75,
+  "total_api_call_duration": 19.412938594818115,
+  "average_api_call_duration": 4.853234648704529,
+  "tool_call_stats": {
+    "mobile_use": 4,
+    "write_todos": 4,
+    "write_memories": 3
+  },
+  "final_todo_state": [
+    {
+      "id": "open_joplin",
+      "content": "Open the Joplin app",
+      "status": "completed"
+    },
+    {
+      "id": "create_note",
+      "content": "Create a new note titled 'Meeting Minutes' with the content 'Discuss progress on Project A'",
+      "status": "completed"
+    }
+  ],
+  "final_memory_state": [
+    {
+      "memory_id": "joplin_app_visible",
+      "content": "Joplin app icon is visible on the home screen.",
+      "step": 2
+    },
+    {
+      "memory_id": "note_content",
+      "content": "Discuss progress on Project A",
+      "step": 3
+    },
+    {
+      "memory_id": "note_created_title",
+      "content": "Meeting Minutes",
+      "step": 3
+    },
+    {
+      "memory_id": "note_created_with_content",
+      "content": "Meeting Minutes\nDiscuss progress on Project A",
+      "step": 4
+    }
+  ]
+}

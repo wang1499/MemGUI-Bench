@@ -1,0 +1,78 @@
+{
+  "total_model_calls": 13,
+  "total_prompt_tokens": 140733,
+  "total_completion_tokens": 3529,
+  "average_prompt_tokens_per_call": 10825.615384615385,
+  "average_completion_tokens_per_call": 271.46153846153845,
+  "total_api_call_duration": 60.790607213974,
+  "average_api_call_duration": 4.676200554921077,
+  "tool_call_stats": {
+    "mobile_use": 13,
+    "write_todos": 13,
+    "write_memories": 10
+  },
+  "final_todo_state": [
+    {
+      "id": "open_audio_recorder",
+      "content": "Open the Audio Recorder app from the home screen or app drawer.",
+      "status": "completed"
+    },
+    {
+      "id": "set_format",
+      "content": "Set the recording format to WAV, 48 kHz, Mono within the app settings.",
+      "status": "completed"
+    },
+    {
+      "id": "start_record",
+      "content": "Start recording an audio clip longer than 10 seconds.",
+      "status": "completed"
+    },
+    {
+      "id": "stop_record",
+      "content": "Stop the recording after more than 10 seconds have elapsed.",
+      "status": "completed"
+    },
+    {
+      "id": "save_file",
+      "content": "Save the recorded file with the name 'MyTestAudio'.",
+      "status": "completed"
+    }
+  ],
+  "final_memory_state": [
+    {
+      "memory_id": "audio_recorder_app_visible",
+      "content": "The Audio Recorder app icon is visible on the screen.",
+      "step": 2
+    },
+    {
+      "memory_id": "file_name",
+      "content": "MyTestAudio",
+      "step": 13
+    },
+    {
+      "memory_id": "record_button",
+      "content": "RECORD button is visible at the bottom center.",
+      "step": 3
+    },
+    {
+      "memory_id": "recording_duration",
+      "content": "00:16",
+      "step": 13
+    },
+    {
+      "memory_id": "recording_settings",
+      "content": "WAV, 48kHz, Mono",
+      "step": 3
+    },
+    {
+      "memory_id": "recording_status",
+      "content": "Paused",
+      "step": 9
+    },
+    {
+      "memory_id": "save_dialog_open",
+      "content": "true",
+      "step": 12
+    }
+  ]
+}
